@@ -1,0 +1,48 @@
+# Design Review — Mobile App Redesign
+
+**Date:** November 14, 2025
+**Attendees:** Sarah Park (Lead Designer), Tom Miller (Marketing), James Wilson (Engineering), Lisa Chen (Product)
+
+---
+
+**Sarah:** Welcome to the design review. I'll walk you through the mobile app redesign. Let me share my screen.
+
+**Sarah:** The new design focuses on three key areas: simplified navigation, faster task completion, and better accessibility. We've reduced the number of taps to complete common tasks by 40%.
+
+**Lisa:** Looks great. What about the onboarding flow?
+
+**Sarah:** We've redesigned onboarding to be progressive. Users can start using the app immediately and learn features as they go. The completion rate in testing went from 45% to 78%.
+
+**James:** From an engineering perspective, the new design will require us to refactor the navigation component. I estimate about 2 weeks of work.
+
+**Sarah:** That's fine. The design is final and ready for implementation.
+
+**Tom:** Marketing question — can we use the new design in our December campaign?
+
+**Sarah:** Yes, I can provide mockups and screenshots by November 20th.
+
+**Tom:** Perfect. We're planning a launch event on December 5th. Can we get a working demo by then?
+
+**James:** We should have a beta version ready by November 30th. That should work for the demo.
+
+**Lisa:** What about accessibility? Did we test with screen readers?
+
+**Sarah:** Yes, we tested with VoiceOver and TalkBack. All components meet WCAG 2.1 AA standards. I've also added support for dynamic text sizing.
+
+**James:** Good. That was a major requirement from the compliance team.
+
+**Lisa:** One concern — the new design might confuse existing users. Do we have a migration plan?
+
+**Sarah:** We'll show a one-time tutorial for existing users on first launch. It highlights the key changes and how to access familiar features.
+
+**James:** We should also add analytics to track how users interact with the new design. That way we can iterate quickly.
+
+**Sarah:** Already included in the spec. We're tracking task completion rates, time to complete, and user satisfaction scores.
+
+**Lisa:** Excellent work, Sarah. Let's schedule a follow-up for November 25th to review the implementation progress.
+
+**Sarah:** Sounds good. I'll send out the final design specs after this meeting.
+
+**James:** I'll create the engineering tickets and share the sprint plan by end of day.
+
+**Tom:** Great. Looking forward to the December launch.

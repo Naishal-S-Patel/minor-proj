@@ -1,0 +1,40 @@
+# Sales Strategy Meeting — Enterprise Clients
+
+**Date:** November 12, 2025
+**Attendees:** Karen White (VP Sales), Robert Zhang (Account Executive), Diana Lopez (Sales Engineer), Kevin Brown (Product)
+
+---
+
+**Karen:** We've lost three enterprise deals this quarter to competitors. Let's figure out why and what we can do differently. Robert, what feedback are you hearing from prospects?
+
+**Robert:** The main objection is integration complexity. Prospects say our API documentation is unclear and the onboarding process takes too long. One prospect specifically mentioned that Competitor X has a much better developer experience.
+
+**Diana:** I agree. I spend at least 40% of my time just helping prospects understand how to integrate. We need better sample code and a sandbox environment.
+
+**Kevin:** From a product perspective, we're working on a self-service enterprise trial. It should be ready by Q1. It includes pre-built integrations and a guided onboarding flow.
+
+**Karen:** That's too late. We need something now. What can we do this quarter?
+
+**Kevin:** We could create a faster integration kit — basically a set of pre-built connectors for the most common platforms like Salesforce, HubSpot, and Slack.
+
+**Diana:** That would help enormously. I'd estimate it would cut onboarding time from 2 weeks to 3 days for most enterprise clients.
+
+**Robert:** Another issue is pricing. Several prospects mentioned our pricing model is confusing. They want transparent, predictable pricing.
+
+**Karen:** We've been working on new pricing tiers. I'll share the draft with the team by Friday. The goal is to simplify to three tiers with clear feature boundaries.
+
+**Kevin:** Can we also get case studies from our existing enterprise clients? Prospects want to see social proof.
+
+**Karen:** Good idea. Diana, can you work with two or three happy clients to create case studies?
+
+**Diana:** Absolutely. I have three clients who would be willing. I'll reach out this week.
+
+**Robert:** One more thing — the demo environment needs updating. It still shows the old UI.
+
+**Kevin:** I'll have the demo environment updated with the new features by next Monday.
+
+**Karen:** Great. Action items: Kevin will create an integration kit by November 26th. Diana will produce three case studies by December 1st. I'll share new pricing by Friday. Robert, keep me posted on any deals in the pipeline.
+
+**Robert:** Will do. I have a call with TechCorp tomorrow. They're a $500K opportunity.
+
+**Karen:** Excellent. Let's win this one.

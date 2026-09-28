@@ -1,0 +1,44 @@
+# --- Secrets ---
+.env
+.env.local
+backend/.env
+*.pem
+
+# --- Markdown / Docs ---
+*.md
+**/*.md
+.kiro/
+
+# --- Planning / Implementation files ---
+implementation_plan*
+Bug\ Triage.txt
+
+# --- Vite temp files ---
+*.timestamp-*.mjs
+
+# --- Python ---
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+backend/venv/
+backend/venv_311/
+*.egg-info/
+
+# --- Node / Frontend ---
+node_modules/
+dist/
+.vite/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- Models cache ---
+backend/models/

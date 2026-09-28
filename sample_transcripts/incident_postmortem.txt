@@ -1,0 +1,44 @@
+# Incident Postmortem — Database Outage
+
+**Date:** November 3, 2025
+**Duration:** 47 minutes
+**Severity:** P1
+**Attendees:** David Kim (SRE), Rachel Green (Backend), Mike Torres (DBA), Anil Patel (Product)
+
+---
+
+**David:** Thanks for joining on short notice. Let's do a quick postmortem on yesterday's database outage. The incident started at 2:14 AM and was resolved by 3:01 AM. Total downtime was 47 minutes affecting approximately 12,000 users.
+
+**Rachel:** I've reviewed the logs. The root cause was a failed migration that locked the primary database table. The migration script didn't have proper timeout handling, so it held a lock for 45 minutes before we manually killed it.
+
+**Mike:** I can add more context. We were running a schema migration on the users table to add a new index. The table had grown to 2.3 million rows, which was much larger than our test environment. The migration took a lock that blocked all read operations.
+
+**David:** Why wasn't this caught in staging?
+
+**Mike:** Our staging database only has about 50,000 rows. The migration completed in 3 seconds there. We didn't anticipate the performance difference.
+
+**Rachel:** The fix was straightforward — I killed the migration process, released the lock, and we were back online. But we need to prevent this from happening again.
+
+**David:** Agreed. What are the action items?
+
+**Mike:** I'll implement online schema migration using pt-online-schema-change for all future migrations on tables larger than 100,000 rows. I'll also add a migration testing framework that uses production-sized data.
+
+**Rachel:** I'll add monitoring for lock duration on critical tables. If a lock exceeds 30 seconds, it should trigger an alert.
+
+**Anil:** From a product perspective, we need a communication plan for outages. Users were confused and we didn't have a status page.
+
+**David:** Good point. I'll set up a status page using Instatus and create runbooks for common incident types.
+
+**Anil:** Can we also add a way to notify affected users after an incident?
+
+**Rachel:** I can implement an email notification system that sends updates to users who were impacted.
+
+**David:** Let's set the deadline for all action items as November 17th. I'll create a tracking document.
+
+**Mike:** Quick question — should we also review our other migration scripts?
+
+**David:** Yes, let's audit all migrations run in the last 60 days. Mike, can you lead that?
+
+**Mike:** Sure, I'll have a report ready by next Friday.
+
+**David:** Great. Thanks everyone. Stay vigilant.

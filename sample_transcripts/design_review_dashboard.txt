@@ -1,0 +1,40 @@
+[00:00:01] SPEAKER_00: Hey everyone, thanks for joining the design review for the new dashboard. Lisa, you want to walk us through the mockups?
+[00:00:08] SPEAKER_01: Sure. So the main change is we're moving from a single-column layout to a two-column grid. The left column will have the main metrics — active users, revenue, churn rate. The right column will have the charts and trends.
+[00:00:22] SPEAKER_02: Can you show us the mobile version?
+[00:00:24] SPEAKER_01: Yes. On mobile, it collapses to a single column. The metrics cards stack vertically, and the charts go below them. I've also added a swipe gesture to switch between different chart views.
+[00:00:36] SPEAKER_03: The swipe gesture is a nice touch. How does the color palette work for the charts? Are we using the same colors as the existing reports?
+[00:00:44] SPEAKER_01: Yes, we're keeping the same color scheme for consistency. Blue for primary metrics, green for positive trends, red for negative. I've also added a dark mode variant that adjusts the contrast ratios.
+[00:00:56] SPEAKER_00: What about accessibility? Are we meeting WCAG standards?
+[00:01:00] SPEAKER_01: Yes, all text meets the four point five to one contrast ratio. Charts have aria labels for screen readers. We're also adding keyboard navigation for the interactive elements.
+[00:01:10] SPEAKER_04: I have a question about the real-time updates. Are we polling the server or using WebSockets?
+[00:01:16] SPEAKER_01: We're using WebSockets for the real-time data. The charts will update every five seconds when there's new data available. There's also a toggle to pause the live updates if the user wants to focus on a specific time range.
+[00:01:30] SPEAKER_04: Five seconds might be too aggressive for the server. Can we make it configurable? Maybe start with thirty seconds and let users adjust.
+[00:01:38] SPEAKER_01: That's a good point. We can add a settings panel where users can adjust the refresh interval. I'll update the mockup.
+[00:01:46] SPEAKER_02: What about the export functionality? Are we keeping the same options?
+[00:01:50] SPEAKER_01: Yes, PDF and CSV exports are still available. I've also added an option to export just a specific chart or widget. Users can click on any chart and select "Export as PNG" to get a high-resolution image.
+[00:02:02] SPEAKER_03: That's great for presentations. What about the filter system? The current one is pretty limited.
+[00:02:08] SPEAKER_01: I've redesigned the filters. Instead of a dropdown, we're using a tag-based system. Users can add multiple filters and combine them. For example, you can filter by "Region: North America" AND "Plan: Enterprise" AND "Last 30 days."
+[00:02:24] SPEAKER_03: I like that. Much more flexible. How do you clear all filters?
+[00:02:28] SPEAKER_01: There's a "Clear All" button that appears when filters are active. It's also keyboard accessible — pressing Escape while in the filter panel clears everything.
+[00:02:37] SPEAKER_00: Nice attention to detail. What about performance? With all these real-time updates and filters, are we concerned about rendering performance?
+[00:02:46] SPEAKER_01: I've been working with the frontend team on optimization. We're using virtual scrolling for the data tables, and the charts are using canvas rendering instead of SVG for better performance with large datasets. We've also implemented lazy loading for the secondary metrics.
+[00:03:00] SPEAKER_04: What about the data volume? Some of our customers have millions of data points. Will the charts handle that?
+[00:03:07] SPEAKER_01: We're implementing data aggregation at the chart level. When there are more than a thousand data points, we'll automatically aggregate them using downsampling algorithms. The user can zoom in to see the raw data at specific time ranges.
+[00:03:20] SPEAKER_04: That's smart. What about the loading state? How do we handle the initial data fetch?
+[00:03:26] SPEAKER_01: We're using skeleton screens for the initial load. The layout will show placeholder shapes that match the final design, so users get a sense of what's coming. We're also implementing progressive loading — the main metrics load first, then the charts, then the secondary data.
+[00:03:42] SPEAKER_00: That's a good approach. Any feedback from user testing?
+[00:03:46] SPEAKER_01: We did a usability test with five users last week. The overall feedback was very positive. The main pain point was the filter system — some users didn't realize they could combine multiple filters. We're adding a hint text and a tooltip to address that.
+[00:04:00] SPEAKER_00: Good catch. What's the timeline for implementation?
+[00:04:03] SPEAKER_01: We're looking at about four weeks for the frontend work. The backend APIs are mostly ready — we just need to add the WebSocket support and the export endpoints. I'd say two weeks for backend and four weeks for frontend, with some overlap.
+[00:04:18] SPEAKER_00: Can we start with the core metrics and charts, and add the advanced features like real-time updates and exports in a second phase?
+[00:04:26] SPEAKER_01: Absolutely. The design is modular, so we can ship the basic layout and charts first, then iterate on the advanced features.
+[00:04:34] SPEAKER_00: Perfect. Let's go with that approach. Any other feedback?
+[00:04:38] SPEAKER_02: One small thing — the notification bell in the top right. Can we add a badge count for unread notifications?
+[00:04:45] SPEAKER_01: Already planned! It's in the mockup. The badge will show the number of unread notifications, and clicking it opens a dropdown with the notification list.
+[00:04:54] SPEAKER_02: Perfect. I think that covers everything. Great work, Lisa.
+[00:04:58] SPEAKER_00: Agreed. Let's finalize the implementation plan and start the sprint. Lisa, can you share the Figma link with the team?
+[00:05:05] SPEAKER_01: Just shared it in the Slack channel. Let me know if you have any questions.
+[00:05:09] SPEAKER_00: Thanks everyone. Great meeting.
+[00:05:11] SPEAKER_01: Thanks!
+[00:05:12] SPEAKER_02: Bye!
+[00:05:13] SPEAKER_03: See you later.

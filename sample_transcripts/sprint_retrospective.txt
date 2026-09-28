@@ -1,0 +1,38 @@
+[00:00:01] SPEAKER_00: Welcome to the sprint retrospective for Sprint twenty-three. Let's start with what went well. Any volunteers?
+[00:00:08] SPEAKER_01: I'll go. The deployment pipeline improvements we shipped last sprint are really paying off. We went from about thirty minutes per deployment to under ten minutes.
+[00:00:18] SPEAKER_00: That's awesome. Anything else that went well?
+[00:00:21] SPEAKER_02: The new onboarding flow we built got really positive feedback from the beta users. The conversion rate improved by fifteen percent compared to the old flow.
+[00:00:30] SPEAKER_03: I also want to call out the cross-team collaboration on the payment integration. The finance team was really responsive, and we were able to resolve the edge cases quickly.
+[00:00:40] SPEAKER_00: Great to hear. Now, what didn't go so well? Where did we struggle?
+[00:00:46] SPEAKER_01: The database migration for the user profile redesign took way longer than estimated. We allocated two days, but it ended up taking almost five days because of the data validation issues.
+[00:00:58] SPEAKER_00: What happened there?
+[00:01:00] SPEAKER_01: We discovered that about ten percent of user profiles had malformed data that we hadn't anticipated. The migration script kept failing on those records, and we had to write custom cleanup queries for each case.
+[00:01:12] SPEAKER_03: I think we need to add a data quality check step before running migrations. We should profile the data first and handle edge cases proactively.
+[00:01:20] SPEAKER_00: That's a good takeaway. Anyone else?
+[00:01:23] SPEAKER_02: The code review bottleneck is still a problem. We had three PRs sitting in review for over two days this sprint. It's slowing down the team.
+[00:01:32] SPEAKER_04: I think part of the issue is that we're doing too many large PRs. If we break them down into smaller chunks, reviews would be faster and more focused.
+[00:01:41] SPEAKER_00: Agreed. Let's add a guideline: PRs should be under three hundred lines of code. If they're bigger, break them up.
+[00:01:48] SPEAKER_02: That would help. Also, we should consider having more people do code reviews. Right now it's mostly just two or three people handling all the reviews.
+[00:01:57] SPEAKER_00: Good point. Let's encourage everyone to do at least one review per day. It's a great way to learn about the codebase too.
+[00:02:05] SPEAKER_03: Another thing — the test flakiness is getting out of hand. We had four builds fail this sprint due to flaky tests, and it's eroding confidence in the CI pipeline.
+[00:02:16] SPEAKER_01: I identified two of the flaky tests. They're both related to the test database not being properly reset between runs. I can fix those this week.
+[00:02:25] SPEAKER_00: Please do. And let's add a flaky test tracking sheet so we can monitor the trend.
+[00:02:30] SPEAKER_01: Already on it. I created a spreadsheet to track flaky tests, their root cause, and fix status.
+[00:02:36] SPEAKER_00: Excellent. Okay, what about improvements? What should we try differently next sprint?
+[00:02:42] SPEAKER_04: I'd like to try pair programming on the more complex tasks. The notification service refactor would have been a good candidate. I think we could have finished it faster with two people working together.
+[00:02:53] SPEAKER_00: I'm open to that. Let's try pairing on one or two tasks next sprint and see how it goes.
+[00:02:59] SPEAKER_02: Can we also improve our sprint planning estimates? We consistently underestimate tasks. Maybe we should use story points instead of hours.
+[00:03:08] SPEAKER_00: That's a bigger change. Let's discuss it in the next retrospective and maybe run a workshop on estimation techniques.
+[00:03:15] SPEAKER_02: Fair enough.
+[00:03:17] SPEAKER_03: One more thing — I think we should formalize our on-call rotation. Right now it's ad hoc, and when something breaks, nobody knows who's supposed to respond.
+[00:03:27] SPEAKER_00: Agreed. Let's set up a proper on-call schedule starting next sprint. Alex, can you put together a rotation?
+[00:03:33] SPEAKER_01: Sure. I'll create a shared calendar and set up PagerDuty alerts. We should also document the escalation process.
+[00:03:40] SPEAKER_00: Perfect. Alright, let's do action items. Sarah, fix the flaky tests and set up the tracking sheet. Mike, document the data migration best practices. Alex, set up the on-call rotation. Chris, set up the pair programming sessions for next sprint.
+[00:03:55] SPEAKER_01: Got it.
+[00:03:56] SPEAKER_02: Sounds good.
+[00:03:57] SPEAKER_03: Will do.
+[00:03:58] SPEAKER_04: On it.
+[00:04:00] SPEAKER_00: Great retrospective everyone. Let's aim for a cleaner sprint next time. See you all at the sprint planning tomorrow.
+[00:04:06] SPEAKER_01: Thanks everyone. Bye!
+[00:04:08] SPEAKER_02: See you tomorrow.
+[00:04:09] SPEAKER_03: Bye!

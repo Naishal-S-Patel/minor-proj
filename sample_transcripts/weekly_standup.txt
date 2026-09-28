@@ -1,0 +1,45 @@
+# Weekly Standup — Platform Team
+
+**Date:** November 10, 2025
+**Time:** 9:30 AM
+**Attendees:** Chris Lee, Priya Sharma, Marcus Johnson, Emily Watson, Jake Brown
+
+---
+
+**Chris:** Let's go around the room. Priya, you first.
+
+**Priya:** Yesterday I finished the API rate limiting implementation. Today I'm working on the monitoring dashboard for rate limit metrics. No blockers.
+
+**Marcus:** I'm still debugging the WebSocket connection issue on mobile Safari. The connection drops after 30 seconds. I've narrowed it down to a keep-alive problem. I need to talk to Jake about the nginx configuration.
+
+**Jake:** I can help with that. We had a similar issue last month with the proxy timeout settings. Let's pair on it after standup.
+
+**Marcus:** Perfect, thanks.
+
+**Emily:** I completed the user preference sync across devices. Today I'm starting on the dark mode toggle. One question — should dark mode be a system-level setting or per-user?
+
+**Chris:** Per-user for now. We can add system-level detection later.
+
+**Emily:** Got it.
+
+**Jake:** I finished the CI pipeline optimization. Build times are down from 12 minutes to 4 minutes. I'm now working on adding integration tests for the new auth service.
+
+**Chris:** Nice work on the CI. How did you get it so fast?
+
+**Jake:** Parallelized the test suites and added better caching for dependencies. Also switched to a faster base Docker image.
+
+**Chris:** Great. I'm wrapping up the sprint planning document for next week. I'll share it by end of day. Also need to review Priya's rate limiting PR.
+
+**Priya:** It's ready for review. I tagged you on GitHub.
+
+**Chris:** I'll take a look this afternoon.
+
+**Marcus:** One more thing — the staging environment is acting up again. Some tests are flaky.
+
+**Jake:** I noticed that too. I think it's a resource contention issue. We might need to upgrade the staging server.
+
+**Chris:** Let's discuss that in the architecture meeting tomorrow. For now, flag any flaky tests in the Slack channel.
+
+**Marcus:** Will do.
+
+**Chris:** Alright, that's it. Good standup everyone.

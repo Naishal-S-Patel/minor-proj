@@ -1,0 +1,58 @@
+[00:00:01] SPEAKER_00: Alright everyone, thanks for joining the Q4 planning kickoff. Let's get started.
+[00:00:05] SPEAKER_01: Before we dive in, can we do a quick round of updates? Sarah, how's the API redesign going?
+[00:00:12] SPEAKER_02: Sure. We finished the new endpoint structure last week. The team is currently working on the migration script. Should be done by end of next week.
+[00:00:22] SPEAKER_00: Great. Any blockers?
+[00:00:24] SPEAKER_02: Just one thing — we need the database team to confirm the new schema for the audit log table. Mike, can you look into that?
+[00:00:31] SPEAKER_03: Yeah, I'll have it ready by Thursday. We also need to discuss the indexing strategy for the new tables.
+[00:00:38] SPEAKER_00: Good. Let's put that on the agenda for the next architecture review. Moving on to Q4 priorities. What are the big wins we're going after?
+[00:00:48] SPEAKER_01: I think the top three are: one, the mobile app launch. Two, the analytics dashboard. And three, the security audit.
+[00:00:58] SPEAKER_04: Can we add the performance optimization work to that list? We're still seeing latency issues on the search endpoint.
+[00:01:05] SPEAKER_00: Good point. How critical is that?
+[00:01:08] SPEAKER_04: Pretty critical. We're getting p99 latency of over two seconds on search. The target is under five hundred milliseconds.
+[00:01:16] SPEAKER_00: Okay, let's make that a priority. Who's going to own the performance work?
+[00:01:21] SPEAKER_04: I can take the lead on that. I'll need help from Mike on the database query optimization side.
+[00:01:27] SPEAKER_03: Happy to help. We should also look at adding a caching layer for the most common search queries.
+[00:01:33] SPEAKER_00: Sounds like a plan. Let's talk about the mobile app. What's the timeline?
+[00:01:38] SPEAKER_01: We're targeting mid-November for the beta release. The UI is about seventy percent done. We still need to finalize the push notification system and the offline sync feature.
+[00:01:50] SPEAKER_00: Is the push notification vendor selected?
+[00:01:53] SPEAKER_01: Yes, we're going with Firebase Cloud Messaging. It covers both iOS and Android, and it's free for our volume.
+[00:02:00] SPEAKER_00: Good choice. What about the analytics dashboard?
+[00:02:03] SPEAKER_02: That's my team's project. We've been prototyping with Recharts. The main challenge is the data pipeline — we need to aggregate data from multiple microservices in near real-time.
+[00:02:15] SPEAKER_00: How are you planning to handle that?
+[00:02:17] SPEAKER_02: We're looking at two options. Option one is a dedicated aggregation service that listens to event streams. Option two is to use MongoDB's aggregation pipeline directly.
+[00:02:28] SPEAKER_03: I'd recommend option two for now. We already have the data in MongoDB, and adding another service increases operational complexity.
+[00:02:36] SPEAKER_02: That's fair. We can always refactor later if performance becomes an issue.
+[00:02:41] SPEAKER_00: Agreed. Let's go with the simpler approach first. Now, the security audit. When is that starting?
+[00:02:48] SPEAKER_01: The external firm is scheduled for the first two weeks of November. We need to have all our documentation ready by October twenty-fifth.
+[00:02:57] SPEAKER_00: Is everything on track for that?
+[00:02:59] SPEAKER_01: Mostly. The penetration test report from last quarter had three high-severity findings that still need to be addressed. We should prioritize those.
+[00:03:07] SPEAKER_00: Can you send me the list? I'll make sure we have the resources to fix them before the audit.
+[00:03:12] SPEAKER_01: Will do. I'll also set up a meeting with the security team to review our current posture.
+[00:03:17] SPEAKER_00: Perfect. Let's talk about headcount. Do we have any open positions we need to fill in Q4?
+[00:03:23] SPEAKER_04: We have two backend engineer positions that are still open. The hiring pipeline is moving slowly.
+[00:03:29] SPEAKER_00: What's the bottleneck?
+[00:03:31] SPEAKER_04: We're getting a lot of applicants but not many strong ones. The take-home assignment is filtering out a lot of people.
+[00:03:38] SPEAKER_00: Maybe we should revisit the interview process. What if we do a pair programming session instead of a take-home?
+[00:03:44] SPEAKER_04: That's actually a great idea. It would also give candidates a better sense of our team culture.
+[00:03:50] SPEAKER_00: Let's try that for the next round of interviews. Anything else on the hiring front?
+[00:03:55] SPEAKER_01: We also need a senior DevOps engineer. The infrastructure work is piling up, and we're spending too much time on manual deployments.
+[00:04:03] SPEAKER_00: Agreed. Let's prioritize that role. Okay, moving on to budget. Any concerns there?
+[00:04:10] SPEAKER_02: Cloud costs are creeping up. We're at about twelve thousand dollars a month now, up from eight thousand at the start of the year.
+[00:04:18] SPEAKER_00: That's a significant increase. What's driving it?
+[00:04:21] SPEAKER_02: Mostly the data storage growth. We're storing more raw logs now, and our retention policy is ninety days. We could cut costs by reducing the retention period or moving old data to cold storage.
+[00:04:34] SPEAKER_00: Let's look at the cold storage option first. I don't want to lose the data if we can avoid it.
+[00:04:39] SPEAKER_02: I'll put together a proposal for the migration. It should save us about thirty percent on storage costs.
+[00:04:45] SPEAKER_00: Excellent. Alright, I think that covers the main agenda items. Let's do action items. Sarah, can you send the mobile app timeline to the stakeholders by Friday?
+[00:04:55] SPEAKER_02: Done. Mike, the database schema review by Thursday. Alex, the performance optimization plan by next Monday. And Chris, the security audit prep meeting by end of week.
+[00:05:05] SPEAKER_01: Got it. I'll also send the penetration test findings to the team.
+[00:05:09] SPEAKER_00: Great. One last thing — I want everyone to start thinking about the annual review process. We'll be doing self-assessments in the last two weeks of November. I'll send out the timeline and templates next week.
+[00:05:21] SPEAKER_01: Quick question — are we doing peer reviews this year?
+[00:05:24] SPEAKER_00: Yes, same as last year. Three sixty feedback for everyone. We'll use the same tool as before.
+[00:05:30] SPEAKER_03: Can we also discuss the engineering levels framework? I've been getting questions from the team about promotion criteria.
+[00:05:37] SPEAKER_00: Good point. Let's add that to the next all-hands. Maybe a thirty-minute slot to walk through the updated criteria.
+[00:05:44] SPEAKER_03: Sounds good. I'll prepare a draft.
+[00:05:47] SPEAKER_00: Perfect. Alright everyone, great meeting. Let's reconvene next Thursday at the same time. Thanks!
+[00:05:52] SPEAKER_01: Thanks everyone!
+[00:05:53] SPEAKER_02: Bye!
+[00:05:54] SPEAKER_03: See you next week.
+[00:05:55] SPEAKER_04: Take care.

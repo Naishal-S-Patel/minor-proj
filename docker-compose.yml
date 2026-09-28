@@ -1,0 +1,55 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: meeting-ai-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      # Named volume persists data across `docker compose down` / restarts,
+      # so you don't lose your test meetings every time you stop the stack.
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meeting-ai-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Note: "mongodb" here is the service name above, not localhost --
+      # Docker Compose's internal DNS resolves service names to container
+      # IPs automatically. This is why the URI differs from the one in
+      # .env.example (which is for running the backend directly on your
+      # host machine, outside Docker, where MongoDB is on localhost).
+      MONGODB_URI: mongodb://mongodb:27017
+      MONGODB_DB_NAME: meeting_ai
+      ALLOWED_ORIGINS: http://localhost:5173
+      ENVIRONMENT: development
+      DEBUG: "true"
+      # Passed through from the host's environment (export GEMINI_API_KEY=...
+      # before running `docker compose up`, or put it in a .env file in this
+      # same directory -- Docker Compose auto-loads that one). Left empty
+      # by default rather than hardcoded, since it's a secret -- never commit
+      # a real key into this file.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      # Mounts local code into the container so `--reload` picks up changes
+      # without rebuilding the image on every edit -- purely a dev
+      # convenience, not used in production deploys.
+      - ./backend/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  mongo_data:

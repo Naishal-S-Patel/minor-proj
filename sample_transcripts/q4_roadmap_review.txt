@@ -1,0 +1,40 @@
+# Q4 Product Roadmap Review
+
+**Date:** October 15, 2025
+**Attendees:** Lisa Chen (Product), James Wilson (Engineering), Sarah Park (Design), Tom Miller (Marketing)
+
+---
+
+**Lisa:** Welcome everyone. Let's review our Q4 roadmap priorities. James, can you give us an update on the backend migration?
+
+**James:** Sure. We've completed 60% of the migration to the new microservices architecture. The remaining pieces are the payment service and notification service. I expect both to be done by mid-November.
+
+**Lisa:** That's behind schedule. What's causing the delay?
+
+**James:**主要是 the payment gateway integration took longer than expected. We had to handle some edge cases with international payments. We're also waiting on the API docs from Stripe.
+
+**Sarah:** From a design perspective, we've finalized the mobile redesign. The prototype is ready for user testing. I'd like to run a usability study next week with 8-10 participants.
+
+**Lisa:** Good. How does that align with the engineering timeline?
+
+**Sarah:** The mobile redesign needs the new API endpoints. If James's team can prioritize those endpoints, we can start frontend development in the first week of November.
+
+**James:** We can do that. I'll reprioritize the sprint to get the API endpoints ready by October 28th.
+
+**Tom:** Marketing question — when can we start promoting the new features? We're planning a launch campaign for December 1st.
+
+**Lisa:** Let's target a soft launch on November 25th with the full release on December 1st. Tom, can you prepare the campaign materials by November 10th?
+
+**Tom:** Absolutely. I'll need the final feature list and any screenshots or demos from Sarah's team.
+
+**Sarah:** I can provide those by November 5th after the usability study wraps up.
+
+**Lisa:** Great. Action items: James will reprioritize API endpoints by Oct 28. Sarah will complete usability study by Nov 5 and provide marketing assets. Tom will prepare campaign materials by Nov 10. I'll send a summary email after this meeting.
+
+**James:** One more thing — we need to decide on the error handling strategy for the new services. I'd like to propose using circuit breakers.
+
+**Lisa:** Can you put together a short proposal and share it with the team by Friday?
+
+**James:** Will do.
+
+**Lisa:** Anything else? OK, let's reconvene next Wednesday. Thanks everyone.

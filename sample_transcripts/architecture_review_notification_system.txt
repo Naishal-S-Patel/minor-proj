@@ -1,0 +1,44 @@
+[00:00:01] SPEAKER_00: Alright team, welcome to the architecture review for the new notification system. Tom, you've been leading the design. Walk us through it.
+[00:00:09] SPEAKER_01: Thanks. So the current notification system is monolithic — it handles email, push, and in-app notifications all in one service. This creates bottlenecks and makes it hard to scale individual channels.
+[00:00:22] SPEAKER_02: What's the proposed architecture?
+[00:00:24] SPEAKER_01: We're proposing a microservices approach with three dedicated services: one for email, one for push notifications, and one for in-app notifications. A central notification gateway will route messages to the appropriate service based on channel type and user preferences.
+[00:00:40] SPEAKER_03: How do you handle message ordering? If a user gets an email and an in-app notification, they should arrive in the correct sequence.
+[00:00:48] SPEAKER_01: Great question. We're using an event-driven architecture with Kafka. Each notification event gets a sequence number based on the user's notification history. The services consume events in order and apply their own delivery logic.
+[00:01:02] SPEAKER_00: What about retry logic and failure handling?
+[00:01:06] SPEAKER_01: Each service has its own retry mechanism with exponential backoff. If a notification fails after three retries, it goes to a dead letter queue. We'll have a monitoring dashboard to track failed notifications and a manual retry capability.
+[00:01:20] SPEAKER_04: What about rate limiting? We don't want to spam users with too many notifications.
+[00:01:26] SPEAKER_01: The gateway includes a rate limiter that enforces per-user limits. By default, users can receive a maximum of five notifications per hour across all channels. Users can customize these limits in their settings.
+[00:01:40] SPEAKER_02: How does this affect the existing API? Are we breaking changes?
+[00:01:45] SPEAKER_01: We're maintaining backward compatibility. The existing notification endpoints will continue to work, but they'll now route through the gateway. We're also introducing a new v2 API with richer features like notification templates and scheduling.
+[00:02:00] SPEAKER_00: What about the data model? Are we changing how notifications are stored?
+[00:02:05] SPEAKER_01: Yes, we're introducing a new notifications table that stores the canonical notification record. Each channel service will have its own delivery status table. The canonical record will be the source of truth for the notification lifecycle.
+[00:02:20] SPEAKER_03: How do you plan to handle the migration from the old system?
+[00:02:24] SPEAKER_01: We'll do a phased migration. First, we deploy the new services alongside the old one. Then we gradually shift traffic to the new gateway using feature flags. Once we're confident everything works, we decommission the old system.
+[00:02:40] SPEAKER_00: What's the timeline for each phase?
+[00:02:43] SPEAKER_01: Phase one, building the new services, takes about six weeks. Phase two, the migration, takes another four weeks. So we're looking at a total of ten weeks.
+[00:02:56] SPEAKER_04: That's quite a long migration. Can we accelerate it?
+[00:03:00] SPEAKER_01: We could if we add more engineers to the project. But I'd rather keep the team small and focused to reduce the risk of integration issues.
+[00:03:10] SPEAKER_00: I agree. Quality over speed. What about observability? How do we monitor the new system?
+[00:03:16] SPEAKER_01: We're integrating with our existing observability stack. Each service will emit metrics, logs, and traces to Datadog. We'll have dashboards for throughput, latency, error rates, and delivery success rates. We're also adding alerting for anomalies.
+[00:03:32] SPEAKER_02: What about the email service specifically? Are we using a third-party provider or building our own?
+[00:03:38] SPEAKER_01: We're using SendGrid for email delivery. They handle the SMTP infrastructure, deliverability, and compliance. Our email service focuses on template management, personalization, and tracking.
+[00:03:52] SPEAKER_03: SendGrid is good, but what about cost? They charge per email.
+[00:03:56] SPEAKER_01: We've negotiated a volume discount. At our current volume, it's about zero point one cents per email. For push notifications, we're using Firebase Cloud Messaging, which is free.
+[00:04:10] SPEAKER_00: What about in-app notifications? How are those delivered?
+[00:04:14] SPEAKER_01: We're using WebSockets for real-time delivery. The in-app service maintains persistent connections with connected clients and pushes notifications as they arrive. We'll also implement a polling fallback for clients that can't maintain WebSocket connections.
+[00:04:30] SPEAKER_04: How do you handle notification preferences? Users should be able to opt out of certain channels.
+[00:04:36] SPEAKER_01: The gateway checks user preferences before routing. Each user has a preference record that specifies which channels are enabled and any quiet hours. The preferences are cached in Redis for fast lookups.
+[00:04:50] SPEAKER_00: What about GDPR compliance? Notifications might contain personal data.
+[00:04:55] SPEAKER_01: Good point. We're implementing data retention policies for notification records. Users can request notification history deletion through the existing GDPR tools. The dead letter queue will also respect retention policies.
+[00:05:10] SPEAKER_02: This looks solid. Any concerns from the team?
+[00:05:14] SPEAKER_03: I'm a bit concerned about the Kafka dependency. What happens if Kafka goes down?
+[00:05:19] SPEAKER_01: Kafka is deployed in a three-node cluster with replication. We'd need to lose at least two nodes to lose data. If Kafka is unavailable, notifications will queue in the gateway until it recovers. We're also implementing a circuit breaker pattern.
+[00:05:34] SPEAKER_00: That's acceptable. Any other concerns?
+[00:05:37] SPEAKER_04: What about testing? How do we ensure the new system works correctly?
+[00:05:42] SPEAKER_01: We're implementing a comprehensive test strategy. Unit tests for each service, integration tests for the gateway, and end-to-end tests for the full notification flow. We're also setting up a staging environment that mirrors production.
+[00:05:56] SPEAKER_00: Sounds thorough. Let's approve this architecture and move forward with implementation. Tom, can you create the detailed design document and share it with the team?
+[00:06:06] SPEAKER_01: Will do. I'll have it ready by end of week.
+[00:06:09] SPEAKER_00: Great. Let's also schedule a follow-up review in two weeks to check progress. Thanks everyone.
+[00:06:15] SPEAKER_01: Thanks!
+[00:06:16] SPEAKER_02: Good meeting.
+[00:06:17] SPEAKER_03: See you in two weeks.
