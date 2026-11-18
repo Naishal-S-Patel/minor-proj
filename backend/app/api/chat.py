@@ -66,18 +66,26 @@ async def chat_about_meeting(
         )
 
     try:
-        answer = await _chat_svc.answer(
+        if _chat_svc is None:
+            svc = ChatService()
+        else:
+            svc = _chat_svc
+
+        answer = await svc.answer(
             question=body.question,
             summary=meeting.summary,
             decisions=meeting.decisions,
             keywords=meeting.keywords,
             cleaned_transcript=meeting.cleaned_transcript,
+            action_items=meeting.action_items,
+            calendar_events=meeting.calendar_events,
+            speakers=meeting.speakers,
         )
-    except ChatFailedError as exc:
+    except Exception as exc:
         logger.warning("Chat failed for meeting %s: %s", meeting_id, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"LLM failed to generate an answer: {exc}",
+            detail=f"Chat assistant error: {exc}",
         )
 
     return ChatResponse(answer=answer)

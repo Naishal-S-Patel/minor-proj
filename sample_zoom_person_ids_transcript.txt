@@ -1,0 +1,15 @@
+Meeting ID: 842 9104 7721
+Platform: Zoom
+Participants:
+- USR-101 -> Sarah Chen
+- USR-102 -> Alex Rivera
+- USR-103 -> Maya Patel
+- USR-104 -> David Kim
+
+[00:00] [USR-101]: Good morning everyone, thanks for joining our Zoom architecture review. Today we need to finalize the payment gateway rollout and QA schedule.
+[00:22] [USR-102]: Thanks Sarah. The Stripe webhook handler is ready in staging. I need to update the retry policy and deploy the database migration by Thursday, November 13 at 4:00 PM.
+[00:48] [USR-101]: Great, let's assign that action item to Alex. Maya, how is the regression suite looking?
+[01:05] [USR-103]: I have finished automating the checkout tests. I will run the full security and load test suite by Friday, November 14 at 2:00 PM.
+[01:30] [USR-104]: On the frontend side, I connected the new invoice download button and fixed the dark mode contrast bug.
+[01:50] [USR-101]: Awesome! We decided to freeze new feature merges this Friday and hold our production launch review next Monday, November 17 at 11:00 AM.
+

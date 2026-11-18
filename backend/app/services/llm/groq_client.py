@@ -1,13 +1,14 @@
 """
-GroqClient — Groq API client using the official groq Python SDK.
+GroqClient — Groq API client using httpx async client.
 
+Uses the OpenAI-compatible REST endpoint https://api.groq.com/openai/v1/chat/completions.
+Works reliably with httpx without requiring third-party SDK installation.
 Get a FREE API key at: https://console.groq.com/
-Free tier: 30 requests/min, 14,400 requests/day.
 """
 
 import asyncio
 import logging
-
+import httpx
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -24,72 +25,116 @@ class LLMTimeoutError(Exception):
     """Raised when a Groq API call exceeds the timeout."""
 
 
+class LLMAuthError(Exception):
+    """Raised when Groq returns 401 or 403 (invalid or expired API key). Never retry."""
+
+
 class LLMRequestError(Exception):
     """Raised when the Groq API call fails after all retries."""
 
 
 class GroqClient:
-    """
-    Async wrapper around Groq API using the official groq SDK.
-    Free tier: 30 RPM, fast inference with Llama models.
-    """
+    """Async Groq client using httpx for fast inference."""
 
     def __init__(self) -> None:
-        try:
-            from groq import Groq
-
-            self._client = Groq(api_key=settings.groq_api_key)
-            self._model = settings.groq_model
-            logger.info("Initialized Groq client (model: %s)", self._model)
-        except ImportError as exc:
-            logger.error("groq not installed. Run: pip install groq")
-            raise LLMRequestError("groq package required") from exc
-        except Exception as exc:
-            logger.error("Failed to initialize Groq client: %s", exc)
-            raise LLMRequestError(f"Groq init failed: {exc}") from exc
+        self._api_key = settings.groq_api_key
+        model = settings.groq_model
+        if "gpt-oss" in model or not model:
+            model = "llama-3.3-70b-versatile"
+        self._model = model
+        self._endpoint = "https://api.groq.com/openai/v1/chat/completions"
+        logger.info("Initialized Groq HTTP client (model: %s)", self._model)
 
     @retry(
         retry=retry_if_exception_type((LLMTimeoutError, LLMRequestError)),
-        stop=stop_after_attempt(settings.llm_max_retries + 1),
-        wait=wait_exponential(multiplier=1, min=2, max=15),
+        stop=stop_after_attempt(1),
         reraise=True,
     )
     async def generate_json(self, prompt: str) -> str:
-        """Sends a prompt to Groq and returns raw JSON text."""
-        try:
-            loop = asyncio.get_event_loop()
-            response = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    lambda: self._client.chat.completions.create(
-                        model=self._model,
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": (
-                                    "You are an AI assistant that responds with valid JSON only. "
-                                    "No markdown, no explanations, just JSON."
-                                ),
-                            },
-                            {"role": "user", "content": prompt},
-                        ],
-                        temperature=0.1,
-                        max_tokens=settings.llm_max_output_tokens,
-                        response_format={"type": "json_object"},
+        """Sends a prompt to Groq expecting JSON."""
+        if not self._api_key or self._api_key.startswith("your-") or len(self._api_key) < 10:
+            raise LLMAuthError("Invalid or missing Groq API key")
+
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self._model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an AI assistant that responds with valid JSON only. "
+                        "No markdown, no explanations, just JSON."
                     ),
-                ),
-                timeout=settings.llm_request_timeout_seconds,
-            )
-        except asyncio.TimeoutError as exc:
-            logger.warning("Groq request timed out after %ds", settings.llm_request_timeout_seconds)
-            raise LLMTimeoutError(
-                f"Groq request exceeded {settings.llm_request_timeout_seconds}s timeout"
-            ) from exc
-        except Exception as exc:
-            logger.warning("Groq request failed: %s: %s", type(exc).__name__, exc)
-            raise LLMRequestError(f"{type(exc).__name__}: {exc}") from exc
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+            "max_tokens": settings.llm_max_output_tokens,
+            "response_format": {"type": "json_object"},
+        }
 
-        if not response.choices or not response.choices[0].message.content:
-            raise LLMRequestError("Groq returned an empty response")
+        try:
+            timeout_cfg = httpx.Timeout(10.0, connect=3.0)
+            async with httpx.AsyncClient(timeout=timeout_cfg) as client:
+                res = await client.post(self._endpoint, json=payload, headers=headers)
+                if res.status_code in (401, 403):
+                    raise LLMAuthError(f"Groq API Key invalid or expired (HTTP {res.status_code})")
+                if res.status_code == 429:
+                    raise LLMRequestError("Groq API rate limit reached")
+                res.raise_for_status()
+                data = res.json()
+                content = data["choices"][0]["message"]["content"]
+                return content.strip()
+        except LLMAuthError:
+            raise
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError(f"Groq request timed out: {exc}") from exc
+        except (httpx.HTTPError, KeyError, IndexError) as exc:
+            raise LLMRequestError(f"Groq request error: {exc}") from exc
 
-        return response.choices[0].message.content.strip()
+    @retry(
+        retry=retry_if_exception_type((LLMTimeoutError, LLMRequestError)),
+        stop=stop_after_attempt(1),
+        reraise=True,
+    )
+    async def generate_text(self, prompt: str) -> str:
+        """Sends a prompt to Groq for natural language chat response."""
+        if not self._api_key or self._api_key.startswith("your-") or len(self._api_key) < 10:
+            raise LLMAuthError("Invalid or missing Groq API key")
+
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self._model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a concise, accurate AI assistant for this meeting. Answer clearly.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.3,
+            "max_tokens": settings.llm_max_output_tokens,
+        }
+
+        try:
+            timeout_cfg = httpx.Timeout(10.0, connect=3.0)
+            async with httpx.AsyncClient(timeout=timeout_cfg) as client:
+                res = await client.post(self._endpoint, json=payload, headers=headers)
+                if res.status_code in (401, 403):
+                    raise LLMAuthError(f"Groq API Key invalid or expired (HTTP {res.status_code})")
+                res.raise_for_status()
+                data = res.json()
+                content = data["choices"][0]["message"]["content"]
+                return content.strip()
+        except LLMAuthError:
+            raise
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError(f"Groq chat timed out: {exc}") from exc
+        except (httpx.HTTPError, KeyError, IndexError) as exc:
+            raise LLMRequestError(f"Groq chat error: {exc}") from exc

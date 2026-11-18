@@ -64,15 +64,15 @@ class Settings(BaseSettings):
 
     # --- LLM Extraction (Phase 3) ---
     # Supports multiple LLM providers: gemini (free), groq (free), grok (paid)
-    llm_provider: str = "groq"  # "gemini" or "groq" (both free) or "grok" (paid)
+    llm_provider: str = "gemini"  # "gemini" or "groq" (both free) or "grok" (paid)
     gemini_api_key: str = ""      # Get free key at https://aistudio.google.com/apikey
-    gemini_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-3.8-flash"
     groq_api_key: str = ""        # Get FREE key at https://console.groq.com/
     groq_model: str = "llama-3.3-70b-versatile"  # Free, fast, excellent quality
     grok_api_key: str = ""        # Get key at https://console.x.ai/ ($5 minimum)
     grok_model: str = "grok-4.7"  # Latest xAI Grok model (paid)
     llm_max_output_tokens: int = 2048
-    llm_request_timeout_seconds: int = 60
+    llm_request_timeout_seconds: int = 30
     llm_max_retries: int = 2
 
     # --- Search (Phase 5) ---

@@ -27,10 +27,11 @@ big combined pipeline:
         stages it actually needs.
 """
 
+from datetime import datetime, timedelta, timezone
 import logging
 import uuid
 
-from app.models.meeting import ActionItem, MeetingStatus
+from app.models.meeting import ActionItem, CalendarEvent, DialogueTurn, MeetingStatus
 from app.repositories.meeting_repository import MeetingRepository
 from app.services.llm.extraction_service import ExtractionFailedError, ExtractionService
 
@@ -96,6 +97,35 @@ async def run_extraction_pipeline(
             for item in result.action_items
         ]
 
+        now = datetime.now(timezone.utc)
+        calendar_events = []
+        for ev in result.calendar_events:
+            days = ev.days_from_now if ev.days_from_now is not None else 3
+            target_dt = now + timedelta(days=days)
+            calendar_events.append(
+                CalendarEvent(
+                    id=uuid.uuid4().hex[:8],
+                    title=ev.title,
+                    relative_time=ev.relative_time,
+                    event_date=target_dt.strftime("%Y-%m-%d"),
+                    formatted_date=target_dt.strftime("%A, %b %d, %Y"),
+                    days_from_now=days,
+                    speaker=ev.speaker,
+                    context=ev.context,
+                    category=ev.category,
+                )
+            )
+
+        dialogue_turns = [
+            DialogueTurn(
+                speaker=turn.speaker,
+                speaker_id=turn.speaker_id,
+                time=turn.time,
+                text=turn.text,
+            )
+            for turn in result.dialogue_turns
+        ]
+
         await repo.update_fields(
             meeting_id,
             {
@@ -104,6 +134,11 @@ async def run_extraction_pipeline(
                 "decisions": result.decisions,
                 "keywords": result.keywords,
                 "sentiment": result.sentiment,
+                "speakers": result.speakers,
+                "speaker_map": result.speaker_map,
+                "calendar_events": [e.model_dump() for e in calendar_events],
+                "dialogue_turns": [d.model_dump() for d in dialogue_turns],
+                "detected_language": result.detected_language,
                 "status": MeetingStatus.PROCESSED.value,
             },
         )

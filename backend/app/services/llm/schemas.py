@@ -39,6 +39,26 @@ class LLMActionItem(BaseModel):
     deadline: str | None = None
 
 
+class LLMCalendarEvent(BaseModel):
+    """Calendar event or scheduled milestone extracted from transcript (e.g. 'test after 3 days')."""
+
+    title: str = Field(..., description="Short title e.g. 'Test / Quiz', 'Sprint Review'")
+    relative_time: str = Field(..., description="Relative phrase e.g. 'after 3 days', 'tomorrow at 4pm'")
+    days_from_now: int | None = Field(default=None, description="Estimated number of days from meeting date")
+    speaker: str | None = None
+    context: str = ""
+    category: str = "general"
+
+
+class LLMDialogueTurn(BaseModel):
+    """A dialogue turn by a participant."""
+
+    speaker: str
+    speaker_id: str | None = None
+    time: str | None = None
+    text: str
+
+
 class ExtractionResult(BaseModel):
     """
     The structured output we ask the LLM to produce for a cleaned meeting
@@ -62,10 +82,30 @@ class ExtractionResult(BaseModel):
     )
     keywords: list[str] = Field(
         default_factory=list,
-        max_length=15,
+        max_length=20,
         description="Short topic/technology keywords mentioned in the meeting.",
     )
     sentiment: Sentiment = Field(
-        ...,
+        default="neutral",
         description="Overall tone of the meeting: positive, neutral, or negative.",
+    )
+    speakers: list[str] = Field(
+        default_factory=list,
+        description="List of unique speaker names/labels detected in the transcript.",
+    )
+    speaker_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of Person ID / Speaker ID (e.g. P01, USR-101, Speaker 1) to Speaker Name.",
+    )
+    calendar_events: list[LLMCalendarEvent] = Field(
+        default_factory=list,
+        description="Scheduled deadlines, tests, and events (e.g. 'test after 3 days').",
+    )
+    dialogue_turns: list[LLMDialogueTurn] = Field(
+        default_factory=list,
+        description="Key dialogue turns spoken by specific persons.",
+    )
+    detected_language: str | None = Field(
+        default=None,
+        description="Language detected in the meeting e.g. 'en', 'hi', 'es'.",
     )

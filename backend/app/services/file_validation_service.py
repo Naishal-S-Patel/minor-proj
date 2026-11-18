@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 # Text file constants
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
-ALLOWED_CONTENT_TYPES = {"text/plain"}
-ALLOWED_EXTENSIONS = {".txt"}
+ALLOWED_CONTENT_TYPES = {"text/plain", "text/vtt"}
+ALLOWED_EXTENSIONS = {".txt", ".vtt"}
 
 # Audio file constants
 AUDIO_CONTENT_TYPES = {

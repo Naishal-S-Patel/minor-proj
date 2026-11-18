@@ -1,0 +1,26 @@
+WEBVTT
+
+1
+00:00:02.000 --> 00:00:24.000
+USR-101 (Sarah Chen): Good morning everyone, thanks for joining our Zoom sprint architecture review. Today we need to finalize the payment gateway rollout, review the mobile push notification setup, and lock in our QA schedule.
+
+2
+00:00:25.000 --> 00:00:48.000
+USR-102 (Alex Rivera): Thanks Sarah. The Stripe webhook handler and database migration are fully ready in staging. I will update the retry policy and deploy the production migration by Thursday, November 13 at 4:00 PM.
+
+3
+00:00:49.000 --> 00:01:10.000
+USR-101 (Sarah Chen): Great, let's assign that action item to Alex. Maya, how is the automated regression test suite looking for this sprint?
+
+4
+00:01:11.000 --> 00:01:34.000
+USR-103 (Maya Patel): I have finished automating the checkout flow tests. We decided to freeze new feature merges this Friday, and I will run the full security and load test suite by Friday, November 14 at 2:00 PM.
+
+5
+00:01:35.000 --> 00:01:54.000
+USR-104 (David Kim): On the frontend side, I connected the invoice download button and fixed the dark mode contrast issue. I will submit the pull request for client review by tomorrow at 11:00 AM.
+
+6
+00:01:55.000 --> 00:02:15.000
+USR-101 (Sarah Chen): Awesome job team! We also decided to hold our production launch review meeting next Monday, November 17 at 11:00 AM. Let's make sure all action items are updated. Thanks everyone!
+

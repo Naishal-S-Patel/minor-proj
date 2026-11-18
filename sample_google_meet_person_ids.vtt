@@ -1,0 +1,20 @@
+WEBVTT
+Kind: captions
+Language: en
+
+1
+00:00:05.000 --> 00:00:18.500
+P01: Hi everyone, I'm Priya Sharma from Product. Thanks for hopping onto this Google Meet sync for the Q4 mobile release.
+
+2
+00:00:19.000 --> 00:00:34.200
+P02: Hey Priya, this is Rohan Mehta from Android Engineering. We completed the offline caching module, and I'll finish the unit tests by Wednesday.
+
+3
+00:00:35.000 --> 00:00:52.000
+P03 (Elena Gomez): Great job Rohan! On QA, I'll prepare the regression checklist and test the deep links before the client demo next Tuesday.
+
+4
+00:00:53.000 --> 00:01:08.000
+P01: Perfect. We all agree to target the beta build for Friday at 5:00 PM. Let's wrap up!
+

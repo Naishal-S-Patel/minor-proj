@@ -81,6 +81,13 @@ export const toggleActionItem = createAsyncThunk(
   },
 );
 
+export const updateSpeakerMap = createAsyncThunk(
+  "meetings/updateSpeakerMap",
+  async (args: { meetingId: string; speakerMap: Record<string, string> }) => {
+    return await api.updateSpeakerMap(args.meetingId, args.speakerMap);
+  },
+);
+
 const meetingsSlice = createSlice({
   name: "meetings",
   initialState,
@@ -161,13 +168,11 @@ const meetingsSlice = createSlice({
       // see ActionItemsTable.tsx's own optimistic-update comment for why
       // the checkbox UI doesn't wait on this slice's status at all.
       .addCase(toggleActionItem.fulfilled, (state, action) => {
-        // Only replace `selected` if it's still the SAME meeting the toggle
-        // was for -- guards against a stale response landing after the
-        // user has already navigated to a different meeting (e.g. a slow
-        // network response arriving after MeetingDetail unmounted and
-        // remounted for a different id). Without this check, a late
-        // response could silently overwrite whatever meeting is now
-        // actually being viewed with data for a DIFFERENT one.
+        if (state.selected && state.selected.id === action.payload.id) {
+          state.selected = action.payload;
+        }
+      })
+      .addCase(updateSpeakerMap.fulfilled, (state, action) => {
         if (state.selected && state.selected.id === action.payload.id) {
           state.selected = action.payload;
         }

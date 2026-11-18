@@ -25,12 +25,67 @@ class TranscriptService:
         6. Remove null bytes and non-printable characters
         """
         text = self._normalize_line_endings(raw_text)
+        text = self._parse_webvtt_if_needed(text)
         text = self._strip_timestamps(text)
         text = self._normalize_speaker_labels(text)
         text = self._collapse_blank_lines(text)
         text = self._strip_line_whitespace(text)
         text = self._remove_non_printable(text)
         return text.strip()
+
+    def _parse_webvtt_if_needed(self, text: str) -> str:
+        """
+        Converts Zoom / Google Meet WebVTT (.vtt) format into clean timestamped speaker lines.
+        Example cue:
+            1
+            00:00:18.230 --> 00:00:20.410
+            USR-101 (Sarah Chen): Good morning!
+        Becomes:
+            [00:18] USR-101 (Sarah Chen): Good morning!
+        """
+        if not text.lstrip().startswith("WEBVTT"):
+            return text
+
+        out_lines: list[str] = []
+        pending_time: str | None = None
+        vtt_time_re = re.compile(r"^(\d{1,2}:)?(\d{2}):(\d{2})(?:\.\d+)?\s*-->\s*\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?")
+
+        for raw_line in text.split("\n"):
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("WEBVTT") or re.match(r"^(Kind|Language|NOTE)\b", line):
+                continue
+            if line.isdigit():
+                continue
+
+            m_time = vtt_time_re.match(line)
+            if m_time:
+                hrs = m_time.group(1) or ""
+                mins = m_time.group(2)
+                secs = m_time.group(3)
+                if hrs:
+                    h_val = int(hrs.rstrip(":"))
+                    total_mins = h_val * 60 + int(mins)
+                    pending_time = f"{total_mins:02d}:{secs}"
+                else:
+                    pending_time = f"{mins}:{secs}"
+                continue
+
+            # Strip HTML/VTT tags like <v Speaker> or <c>
+            vtt_voice = re.match(r"^<v\s+([^>]+)>(.+?)(?:</v>)?$", line)
+            if vtt_voice:
+                line = f"{vtt_voice.group(1).strip()}: {vtt_voice.group(2).strip()}"
+            else:
+                line = re.sub(r"</?[^>]+>", "", line)
+
+            if pending_time:
+                out_lines.append(f"[{pending_time}] {line}")
+                pending_time = None
+            else:
+                out_lines.append(line)
+
+        return "\n".join(out_lines)
 
     def _normalize_line_endings(self, text: str) -> str:
         """Convert all line endings to Unix-style \\n."""

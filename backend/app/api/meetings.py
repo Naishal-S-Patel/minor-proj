@@ -11,8 +11,9 @@ how each upload type's pipeline is sequenced.
 
 import logging
 import os
+import re
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -93,6 +94,92 @@ class ActionItemUpdate(BaseModel):
     done: bool
 
 
+class SpeakerMapUpdate(BaseModel):
+    """Request body for mapping Person IDs / Speaker IDs to Speaker Names."""
+
+    speaker_map: dict[str, str]
+
+
+@router.patch("/{meeting_id}/speakers", response_model=MeetingPublic)
+async def update_speaker_map(
+    meeting_id: str,
+    body: SpeakerMapUpdate,
+    current_user: dict = Depends(get_current_user),
+    repo: MeetingRepository = Depends(get_meeting_repository),
+) -> MeetingPublic:
+    """
+    Maps Person IDs / Speaker IDs (e.g. 'P01', 'USR-101', 'Speaker 1') to
+    real Speaker Names across dialogue turns, action items, calendar events, and speakers.
+    """
+    meeting = await repo.get_by_id(meeting_id)
+    if meeting is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting {meeting_id} not found",
+        )
+    if meeting.uploaded_by != current_user["sub"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this meeting",
+        )
+
+    cleaned_map = {
+        k.strip(): v.strip()
+        for k, v in body.speaker_map.items()
+        if k.strip() and v.strip()
+    }
+    merged_map = {**meeting.speaker_map, **cleaned_map}
+
+    # Remap dialogue turns
+    updated_turns = []
+    for turn in meeting.dialogue_turns:
+        turn_dict = turn.model_dump()
+        key = turn.speaker_id or turn.speaker
+        if key in merged_map:
+            if not turn_dict.get("speaker_id"):
+                turn_dict["speaker_id"] = key
+            turn_dict["speaker"] = merged_map[key]
+        elif turn.speaker in merged_map:
+            turn_dict["speaker"] = merged_map[turn.speaker]
+        updated_turns.append(turn_dict)
+
+    # Remap action items
+    updated_actions = []
+    for item in meeting.action_items:
+        item_dict = item.model_dump()
+        if item.person in merged_map:
+            item_dict["person"] = merged_map[item.person]
+        updated_actions.append(item_dict)
+
+    # Remap calendar events
+    updated_events = []
+    for ev in meeting.calendar_events:
+        ev_dict = ev.model_dump()
+        if ev.speaker and ev.speaker in merged_map:
+            ev_dict["speaker"] = merged_map[ev.speaker]
+        updated_events.append(ev_dict)
+
+    # Rebuild unique speakers list
+    updated_speakers = list(dict.fromkeys(
+        [t["speaker"] for t in updated_turns]
+        + [merged_map.get(s, s) for s in meeting.speakers]
+    ))
+
+    await repo.update_fields(
+        meeting_id,
+        {
+            "speaker_map": merged_map,
+            "speakers": updated_speakers,
+            "dialogue_turns": updated_turns,
+            "action_items": updated_actions,
+            "calendar_events": updated_events,
+        },
+    )
+
+    refreshed = await repo.get_by_id(meeting_id)
+    return MeetingPublic.from_db_model(refreshed)
+
+
 @router.patch("/{meeting_id}/action-items/{item_id}", response_model=MeetingPublic)
 async def update_action_item(
     meeting_id: str,
@@ -152,50 +239,56 @@ async def update_action_item(
 async def create_meeting(
     title: str = Form(..., min_length=1, max_length=200),
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None,  # type: ignore[assignment]  # FastAPI injects the real instance
+    meeting_id_code: str | None = Form(None),
+    platform: str | None = Form(None),
+    language: str | None = Form("auto"),
+    background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     current_user: dict = Depends(get_current_user),
     repo: MeetingRepository = Depends(get_meeting_repository),
 ) -> JSONResponse:
     """
-    Upload a .txt transcript or audio file to create a new meeting.
-    - .txt  -> cleaning runs synchronously, returns 202 with status=cleaning;
-              LLM extraction then runs in the background
-    - audio -> saves file, returns 202 with status=uploaded; transcription
-              then LLM extraction both run in the background
-
-    Both paths converge on the same eventual outcome: poll GET
-    /meetings/{id} until status is "processed" (fully done) or "failed".
+    Upload a .txt / .vtt transcript or audio file to create a new meeting.
+    Supports meeting ID (e.g. Zoom / Meet ID), platform selection, and multi-language transcription.
     """
     ext = os.path.splitext(file.filename or "")[1].lower()
 
-    if ext == ".txt":
-        # Text path: cleaning is synchronous (fast, pure-regex work -- see
-        # TranscriptService), but as of Phase 3 the pipeline isn't done
-        # until LLM extraction also runs, and that's a real network call
-        # to Gemini that can take several seconds. So the meeting is
-        # created with status=CLEANING already satisfied (cleaned_transcript
-        # is set immediately) but extraction is scheduled as a background
-        # task -- same non-blocking-response principle Phase 2 already
-        # established for audio, now applied here too.
+    # Clean inputs
+    cleaned_meeting_code = meeting_id_code.strip() if meeting_id_code and meeting_id_code.strip() else None
+    detected_platform = platform.strip() if platform and platform.strip() else None
+    chosen_lang = language.strip() if language and language.strip() else "auto"
+
+    if ext in (".txt", ".vtt"):
         raw_text = await _file_validation_svc.validate_and_read_text(file)
         cleaned_text = _transcript_svc.clean(raw_text)
 
+        # Auto-detect Zoom Meeting ID if not entered
+        if not cleaned_meeting_code:
+            zoom_match = re.search(r"(?:Meeting ID|Zoom ID|Session ID)[:\s]+([\d\s\-]{8,15})", raw_text, re.IGNORECASE)
+            if zoom_match:
+                cleaned_meeting_code = zoom_match.group(1).strip()
+                if not detected_platform:
+                    detected_platform = "Zoom"
+
         meeting = MeetingInDB(
-            id="",  # assigned by MongoDB on insert
+            id="",
             title=title,
             uploaded_by=current_user["sub"],
             status=MeetingStatus.CLEANING,
+            meeting_id_code=cleaned_meeting_code,
+            platform=detected_platform or "Meeting",
+            language=chosen_lang,
             raw_transcript=raw_text,
             cleaned_transcript=cleaned_text,
         )
         created = await repo.create(meeting)
 
+        extraction_service = _extraction_svc or ExtractionService()
         background_tasks.add_task(
             run_text_pipeline,
             meeting_id=created.id,
             cleaned_transcript=cleaned_text,
             repo=repo,
-            extraction_service=_extraction_svc,
+            extraction_service=extraction_service,
         )
 
         return JSONResponse(
@@ -204,14 +297,10 @@ async def create_meeting(
         )
 
     elif ext in AUDIO_EXTENSIONS:
-        # Audio path — asynchronous processing throughout: transcription
-        # (Phase 2) followed by LLM extraction (Phase 3), both chained via
-        # run_audio_pipeline in meeting_orchestrator.py.
         audio_bytes = await _file_validation_svc.validate_audio(
             file, max_size_mb=settings.audio_max_size_mb
         )
 
-        # Check audio duration
         try:
             duration = _audio_svc.get_duration_seconds(audio_bytes, file.filename)
         except ValueError as exc:
@@ -223,20 +312,20 @@ async def create_meeting(
                 detail=f"Audio too long. Maximum: {settings.audio_max_duration_seconds // 3600} hours",
             )
 
-        # Create meeting with uploaded status
         meeting = MeetingInDB(
-            id="",  # assigned by MongoDB on insert
+            id="",
             title=title,
             uploaded_by=current_user["sub"],
             status=MeetingStatus.UPLOADED,
+            meeting_id_code=cleaned_meeting_code,
+            platform=detected_platform or "Audio Recording",
+            language=chosen_lang,
             audio_filename=file.filename,
             audio_duration_seconds=duration,
         )
         created = await repo.create(meeting)
 
-        # Add background pipeline task: transcription, then (on success)
-        # extraction -- see meeting_orchestrator.run_audio_pipeline for the
-        # sequencing logic.
+        extraction_service = _extraction_svc or ExtractionService()
         background_tasks.add_task(
             run_audio_pipeline,
             meeting_id=created.id,
@@ -245,7 +334,8 @@ async def create_meeting(
             repo=repo,
             audio_service=_audio_svc,
             transcript_service=_transcript_svc,
-            extraction_service=_extraction_svc,
+            extraction_service=extraction_service,
+            language=chosen_lang,
         )
 
         return JSONResponse(
@@ -255,5 +345,55 @@ async def create_meeting(
     else:
         raise HTTPException(
             status_code=415,
-            detail="Unsupported file type. Upload a .txt or .mp3/.mp4/.wav/.m4a file.",
+            detail="Unsupported file type. Upload a .txt, .vtt, or .mp3/.mp4/.wav/.m4a file.",
         )
+
+
+@router.get("/{meeting_id}/calendar/ics")
+async def download_calendar_ics(
+    meeting_id: str,
+    current_user: dict = Depends(get_current_user),
+    repo: MeetingRepository = Depends(get_meeting_repository),
+) -> Response:
+    """Exports all calendar events from this meeting as an iCal (.ics) file."""
+    meeting = await repo.get_by_id(meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if meeting.uploaded_by != current_user["sub"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    events = meeting.calendar_events
+    if not events:
+        raise HTTPException(status_code=400, detail="No calendar events found for this meeting")
+
+    ics_lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//AI Meeting Intelligence//Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+    ]
+
+    for ev in events:
+        dt_clean = ev.event_date.replace("-", "")
+        ics_lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{ev.id}@{meeting_id}.meetingai",
+            f"DTSTAMP:{dt_clean}T090000Z",
+            f"DTSTART;VALUE=DATE:{dt_clean}",
+            f"DTEND;VALUE=DATE:{dt_clean}",
+            f"SUMMARY:{ev.title} ({meeting.title})",
+            f"DESCRIPTION:Context: {ev.context}\\nAnnounced by: {ev.speaker or 'Meeting Participant'}",
+            "STATUS:CONFIRMED",
+            "END:VEVENT",
+        ])
+
+    ics_lines.append("END:VCALENDAR")
+    ics_content = "\r\n".join(ics_lines)
+
+    filename = f"{re.sub(r'[^a-zA-Z0-9_-]', '_', meeting.title)}_schedule.ics"
+    return Response(
+        content=ics_content,
+        media_type="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -44,14 +44,11 @@ async def run_audio_pipeline(
     audio_service: AudioService,
     transcript_service: TranscriptService,
     extraction_service: ExtractionService,
+    language: str | None = None,
 ) -> None:
     """
     Full pipeline for an audio upload: transcription, then extraction.
-
-    Scheduled as the single BackgroundTask for audio uploads (see
-    api/meetings.py) -- rather than scheduling two separate background
-    tasks, one function owns the sequencing so extraction only ever runs
-    AFTER transcription has genuinely succeeded.
+    Supports multi-language transcription and progressive line updates.
     """
     try:
         await run_transcription_pipeline(
@@ -61,6 +58,7 @@ async def run_audio_pipeline(
             repo=repo,
             audio_service=audio_service,
             transcript_service=transcript_service,
+            language=language,
         )
     except Exception:
         # run_transcription_pipeline already persisted status=FAILED and

@@ -67,6 +67,64 @@ class GeminiClient:
             logger.error("Failed to initialize Gemini client: %s", exc)
             raise LLMRequestError(f"Gemini init failed: {exc}") from exc
 
+    async def _generate_with_fallback(self, prompt: str, is_json: bool = False) -> str:
+        """Calls Gemini API asynchronously with per-model timeout and resilient fallback."""
+        config = {
+            "max_output_tokens": settings.llm_max_output_tokens,
+            "temperature": 0.1 if is_json else 0.3,
+            "system_instruction": (
+                "You are an AI assistant that responds with valid JSON only. "
+                "No markdown, no explanations, just JSON."
+                if is_json
+                else (
+                    "You are a concise, accurate AI meeting assistant. "
+                    "Answer the user question directly using the meeting context."
+                )
+            ),
+        }
+
+        models_to_try = [self._model]
+        for candidate in ("gemini-3.8-flash", "gemini-3.6-flash"):
+            if candidate not in models_to_try:
+                models_to_try.append(candidate)
+
+        loop = asyncio.get_event_loop()
+        per_model_timeout = min(settings.llm_request_timeout_seconds, 15) if len(models_to_try) > 1 else settings.llm_request_timeout_seconds
+        last_exc: Exception | None = None
+
+        for model in models_to_try:
+            try:
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda m=model: self._client.models.generate_content(
+                            model=m,
+                            contents=prompt,
+                            config=config,
+                        ),
+                    ),
+                    timeout=per_model_timeout,
+                )
+                if response and response.text and response.text.strip():
+                    return response.text.strip()
+            except asyncio.TimeoutError as exc:
+                logger.warning("Gemini model %s timed out after %ds", model, per_model_timeout)
+                last_exc = LLMTimeoutError(f"Gemini model {model} exceeded {per_model_timeout}s timeout")
+                continue
+            except Exception as exc:
+                err_str = str(exc)
+                logger.warning("Gemini model %s call failed (%s): %s", model, type(exc).__name__, exc)
+                last_exc = exc
+                if any(code in err_str for code in ("503", "404", "UNAVAILABLE", "NOT_FOUND")):
+                    continue
+                raise LLMRequestError(f"{type(exc).__name__}: {exc}") from exc
+
+        if isinstance(last_exc, LLMTimeoutError):
+            raise last_exc
+        if last_exc:
+            raise LLMRequestError(f"{type(last_exc).__name__}: {last_exc}") from last_exc
+        raise LLMRequestError("Gemini returned an empty response")
+
     @retry(
         retry=retry_if_exception_type((LLMTimeoutError, LLMRequestError)),
         stop=stop_after_attempt(settings.llm_max_retries + 1),
@@ -78,41 +136,14 @@ class GeminiClient:
         Sends a prompt to Gemini and returns the raw text response.
         Instructs Gemini to output JSON only.
         """
-        try:
-            loop = asyncio.get_event_loop()
-            response = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    lambda: self._client.models.generate_content(
-                        model=self._model,
-                        contents=prompt,
-                        config={
-                            "max_output_tokens": settings.llm_max_output_tokens,
-                            "temperature": 0.1,
-                            "system_instruction": (
-                                "You are an AI assistant that responds with valid JSON only. "
-                                "No markdown, no explanations, just JSON."
-                            ),
-                        },
-                    )
-                ),
-                timeout=settings.llm_request_timeout_seconds,
-            )
-        except asyncio.TimeoutError as exc:
-            logger.warning(
-                "Gemini request timed out after %ds",
-                settings.llm_request_timeout_seconds,
-            )
-            raise LLMTimeoutError(
-                f"Gemini request exceeded {settings.llm_request_timeout_seconds}s timeout"
-            ) from exc
-        except Exception as exc:
-            logger.warning(
-                "Gemini request failed: %s: %s", type(exc).__name__, exc
-            )
-            raise LLMRequestError(f"{type(exc).__name__}: {exc}") from exc
+        return await self._generate_with_fallback(prompt, is_json=True)
 
-        if not response.text:
-            raise LLMRequestError("Gemini returned an empty response")
-
-        return response.text.strip()
+    @retry(
+        retry=retry_if_exception_type((LLMTimeoutError, LLMRequestError)),
+        stop=stop_after_attempt(settings.llm_max_retries + 1),
+        wait=wait_exponential(multiplier=1, min=2, max=15),
+        reraise=True,
+    )
+    async def generate_text(self, prompt: str) -> str:
+        """Sends a prompt to Gemini for natural language chat response (not JSON forced)."""
+        return await self._generate_with_fallback(prompt, is_json=False)

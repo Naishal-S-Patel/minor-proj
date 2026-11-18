@@ -81,17 +81,31 @@ class ActionItem(BaseModel):
     )
     person: str = Field(..., min_length=1, max_length=100)
     task: str = Field(..., min_length=1, max_length=500)
-    # Deadlines in transcripts are almost always relative/fuzzy ("by Friday",
-    # "end of sprint") rather than absolute dates a meeting transcript would
-    # rarely state unambiguously. Storing this as free text (not `date`)
-    # avoids forcing the LLM to guess a specific calendar date it can't
-    # actually know, which would silently fabricate precision that isn't
-    # in the source material.
     deadline: str | None = None
-    # Completion state, toggled by the user from the UI (not extracted).
-    # Defaults to False: a freshly-extracted action item is, by definition,
-    # not yet done.
     done: bool = False
+
+
+class CalendarEvent(BaseModel):
+    """A scheduled event or deadline extracted from a meeting (e.g. 'test after 3 days')."""
+
+    id: str
+    title: str = Field(..., description="Short title e.g. 'Test / Quiz', 'Client Demo'")
+    relative_time: str = Field(..., description="Original phrase e.g. 'after 3 days', 'next Tuesday'")
+    event_date: str = Field(..., description="Target ISO date string YYYY-MM-DD")
+    formatted_date: str = Field(..., description="Human readable date e.g. 'Friday, Nov 13, 2026'")
+    days_from_now: int | None = Field(default=None, description="Number of days from meeting date")
+    speaker: str | None = Field(default=None, description="Who announced or scheduled the event")
+    context: str = Field(default="", description="Relevant sentence or dialogue quote")
+    category: str = Field(default="general", description="exam | deadline | meeting | presentation | review")
+
+
+class DialogueTurn(BaseModel):
+    """A single spoken turn by a person or speaker with optional timestamp."""
+
+    speaker: str
+    speaker_id: str | None = None
+    time: str | None = None
+    text: str
 
 
 Sentiment = Literal["positive", "neutral", "negative"]
@@ -117,18 +131,29 @@ class MeetingInDB(BaseModel):
     cleaned_transcript: str | None = None
     error_message: str | None = None
 
+    # Meeting metadata & Zoom / Video details
+    meeting_id_code: str | None = None          # e.g. Zoom Meeting ID "842 1928 3910"
+    platform: str | None = None                 # Zoom, Google Meet, Teams, In-Person
+    language: str | None = "auto"               # Requested language or "auto"
+    detected_language: str | None = None        # Detected language code e.g. "en", "hi", "es"
+
     # Audio metadata (Phase 2)
     audio_filename: str | None = None           # original uploaded filename
     audio_duration_seconds: float | None = None # probed before Whisper call
 
-    # Populated in Phase 3 by the LLM pipeline. Left as None/empty until
-    # then. Typed as ActionItem (not a bare dict) now that Phase 3 actually
-    # writes to this field -- see ActionItem's docstring above for why.
+    # Live streaming transcript lines during progressive transcription
+    live_transcript_lines: list[str] = Field(default_factory=list)
+
+    # Populated in Phase 3 by the LLM pipeline.
     summary: str | None = None
     action_items: list[ActionItem] = Field(default_factory=list)
     decisions: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     sentiment: Sentiment | None = None
+    speakers: list[str] = Field(default_factory=list)  # detected speaker labels
+    speaker_map: dict[str, str] = Field(default_factory=dict)  # Person ID -> Speaker Name
+    calendar_events: list[CalendarEvent] = Field(default_factory=list)
+    dialogue_turns: list[DialogueTurn] = Field(default_factory=list)
 
     # Phase 5 — sharing
     share_token: str | None = None       # UUID4 string; None = not shared
@@ -150,13 +175,22 @@ class MeetingPublic(BaseModel):
     updated_at: datetime
     cleaned_transcript: str | None = None
     error_message: str | None = None
+    meeting_id_code: str | None = None
+    platform: str | None = None
+    language: str | None = None
+    detected_language: str | None = None
     audio_filename: str | None = None
     audio_duration_seconds: float | None = None
+    live_transcript_lines: list[str] = Field(default_factory=list)
     summary: str | None = None
     action_items: list[ActionItem] = Field(default_factory=list)
     decisions: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     sentiment: Sentiment | None = None
+    speakers: list[str] = Field(default_factory=list)
+    speaker_map: dict[str, str] = Field(default_factory=dict)
+    calendar_events: list[CalendarEvent] = Field(default_factory=list)
+    dialogue_turns: list[DialogueTurn] = Field(default_factory=list)
 
     # Phase 5 — sharing
     share_token: str | None = None
@@ -173,13 +207,22 @@ class MeetingPublic(BaseModel):
             updated_at=meeting.updated_at,
             cleaned_transcript=meeting.cleaned_transcript,
             error_message=meeting.error_message,
+            meeting_id_code=meeting.meeting_id_code,
+            platform=meeting.platform,
+            language=meeting.language,
+            detected_language=meeting.detected_language,
             audio_filename=meeting.audio_filename,
             audio_duration_seconds=meeting.audio_duration_seconds,
+            live_transcript_lines=meeting.live_transcript_lines,
             summary=meeting.summary,
             action_items=meeting.action_items,
             decisions=meeting.decisions,
             keywords=meeting.keywords,
             sentiment=meeting.sentiment,
+            speakers=meeting.speakers,
+            speaker_map=meeting.speaker_map,
+            calendar_events=meeting.calendar_events,
+            dialogue_turns=meeting.dialogue_turns,
             share_token=meeting.share_token,
             is_public=meeting.is_public,
         )
