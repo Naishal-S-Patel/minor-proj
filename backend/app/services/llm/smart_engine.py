@@ -178,6 +178,7 @@ class SmartLocalExtractor:
         cleaned_transcript: str,
         meeting_title: str = "",
         created_at: datetime | None = None,
+        platform: str = "",
     ) -> ExtractionResult:
         if not cleaned_transcript or not cleaned_transcript.strip():
             return ExtractionResult(
@@ -252,7 +253,75 @@ class SmartLocalExtractor:
                     LLMDialogueTurn(speaker=speaker_guess, speaker_id=None, time=None, text=line)
                 )
 
-        speakers = sorted(list(speakers_set)) if speakers_set else ["Speaker 1"]
+        # Detect if meeting is Zoom or Google Meet
+        platform_lower = (platform or "").lower()
+        title_lower = (meeting_title or "").lower()
+        transcript_lower = cleaned_transcript.lower()
+
+        is_zoom = bool(
+            "zoom" in platform_lower
+            or "zoom" in title_lower
+            or "zoom" in transcript_lower
+            or "usr-" in transcript_lower
+        )
+        is_google_meet = bool(
+            "meet" in platform_lower
+            or "google meet" in title_lower
+            or "google meet" in transcript_lower
+            or "meet.google" in transcript_lower
+            or bool(re.search(r"\bP0\d\b", cleaned_transcript))
+        )
+
+        # Ensure Zoom (USR-xxx) or Google Meet (P0x) tag IDs are assigned to every participant
+        if is_zoom or is_google_meet:
+            prefix = "USR-" if is_zoom else "P"
+            start_num = 101 if is_zoom else 1
+            allocated_tags = set(speaker_map.keys())
+            tag_counter = start_num
+
+            # Existing tag -> name and name -> tag
+            name_to_tag = {v: k for k, v in speaker_map.items() if k != v}
+
+            # Ordered list of distinct speakers found in speech
+            ordered_speakers = []
+            for t in dialogue_turns:
+                spk = t.speaker
+                if spk and spk not in ordered_speakers:
+                    ordered_speakers.append(spk)
+            for spk in speakers_set:
+                if spk not in ordered_speakers:
+                    ordered_speakers.append(spk)
+
+            for spk in ordered_speakers:
+                # Skip if already a recognized tag ID or mapped
+                if spk in speaker_map or spk in name_to_tag:
+                    continue
+                # Allocate next available tag ID
+                while True:
+                    candidate = f"{prefix}{tag_counter}" if is_zoom else f"{prefix}{tag_counter:02d}"
+                    if candidate not in allocated_tags:
+                        tag_id = candidate
+                        allocated_tags.add(tag_id)
+                        tag_counter += 1
+                        break
+                    tag_counter += 1
+
+                speaker_map[tag_id] = spk
+                name_to_tag[spk] = tag_id
+
+            # Apply tag_id across all dialogue turns
+            for turn in dialogue_turns:
+                if not turn.speaker_id:
+                    if turn.speaker in name_to_tag:
+                        turn.speaker_id = name_to_tag[turn.speaker]
+                    elif turn.speaker in speaker_map:
+                        turn.speaker_id = turn.speaker
+                elif turn.speaker_id in speaker_map:
+                    turn.speaker = speaker_map[turn.speaker_id]
+
+        speakers = sorted(list(dict.fromkeys(speaker_map.values()))) if speaker_map else (
+            sorted(list(speakers_set)) if speakers_set else ["Speaker 1"]
+        )
 
         # 2. Extract Calendar & Scheduled Events (e.g. "test after 3 days")
         calendar_events = cls._extract_calendar_events(lines, dialogue_turns, ref_date)

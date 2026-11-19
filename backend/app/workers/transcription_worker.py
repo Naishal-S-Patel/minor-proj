@@ -50,13 +50,25 @@ async def run_transcription_pipeline(
             except Exception as exc:
                 logger.debug("Failed to dispatch live transcript update: %s", exc)
 
-        # 2. Progressive transcription on worker thread
+        # Detect platform for speaker tag formatting (Zoom USR-xxx / Meet P0x)
+        meeting = await repo.get_by_id(meeting_id)
+        meeting_platform = meeting.platform if meeting else None
+        if not meeting_platform or meeting_platform in ("Meeting", "Audio Recording"):
+            fn_lower = (filename or "").lower()
+            t_lower = (meeting.title or "").lower() if meeting else ""
+            if "zoom" in fn_lower or "zoom" in t_lower:
+                meeting_platform = "Zoom"
+            elif "meet" in fn_lower or "meet" in t_lower:
+                meeting_platform = "Google Meet"
+
+        # 2. Progressive transcription on worker thread with acoustic voice diarization
         result = await asyncio.to_thread(
             audio_service.transcribe,
             audio_bytes,
             filename,
             language,
             handle_segment,
+            meeting_platform,
         )
 
         if isinstance(result, tuple):
@@ -71,6 +83,8 @@ async def run_transcription_pipeline(
         }
         if detected_lang:
             update_dict["detected_language"] = detected_lang
+        if meeting_platform:
+            update_dict["platform"] = meeting_platform
 
         await repo.update_fields(meeting_id, update_dict)
         await repo.update_status(meeting_id, MeetingStatus.CLEANING)

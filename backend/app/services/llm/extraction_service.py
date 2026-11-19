@@ -64,10 +64,17 @@ class ExtractionService:
             logger.warning("Could not initialize external LLM client: %s. Will use SmartLocalExtractor.", exc)
         return None
 
-    async def extract(self, cleaned_transcript: str) -> ExtractionResult:
+    async def extract(
+        self,
+        cleaned_transcript: str,
+        meeting_title: str = "",
+        platform: str = "",
+    ) -> ExtractionResult:
         """
         Runs the extraction pipeline. If external LLM succeeds, uses it.
         If it fails (expired key, quota, timeout, network), falls back to SmartLocalExtractor.
+        Ensures Zoom Tag IDs (USR-101, USR-102, ...) or Google Meet Tag IDs (P01, P02, ...)
+        are appropriately extracted and assigned.
         """
         if self._client is not None:
             try:
@@ -97,18 +104,26 @@ class ExtractionService:
                             merged_map.get(s, s) for s in result.speakers
                         )) or list(dict.fromkeys(t.speaker for t in result.dialogue_turns))
 
-                    # Fill in detected language or calendar events if LLM left them empty
-                    if not result.calendar_events:
-                        local_fallback = SmartLocalExtractor.extract(cleaned_transcript)
-                        result.calendar_events = local_fallback.calendar_events
-                    if not result.dialogue_turns:
-                        local_fallback = SmartLocalExtractor.extract(cleaned_transcript)
-                        result.dialogue_turns = local_fallback.dialogue_turns
+                    # Fill in detected language, calendar events, or dialogue turns if empty
+                    if not result.calendar_events or not result.dialogue_turns:
+                        local_fallback = SmartLocalExtractor.extract(
+                            cleaned_transcript, meeting_title=meeting_title, platform=platform
+                        )
+                        if not result.calendar_events:
+                            result.calendar_events = local_fallback.calendar_events
+                        if not result.dialogue_turns:
+                            result.dialogue_turns = local_fallback.dialogue_turns
+                        if not result.speaker_map:
+                            result.speaker_map = local_fallback.speaker_map
+
+                    # Ensure platform-specific Tag IDs (Zoom USR-xxx or Meet P0x)
+                    self._ensure_platform_tags(result, cleaned_transcript, meeting_title, platform)
                     return result
 
                 logger.info("First extraction response failed schema parsing, attempting JSON-fix retry")
                 retry_result = await self._retry_with_fix(raw_response)
                 if retry_result is not None:
+                    self._ensure_platform_tags(retry_result, cleaned_transcript, meeting_title, platform)
                     return retry_result
             except Exception as exc:
                 logger.warning(
@@ -119,7 +134,67 @@ class ExtractionService:
 
         # Fallback to SmartLocalExtractor (always succeeds)
         logger.info("Executing SmartLocalExtractor for reliable meeting extraction.")
-        return SmartLocalExtractor.extract(cleaned_transcript)
+        return SmartLocalExtractor.extract(
+            cleaned_transcript, meeting_title=meeting_title, platform=platform
+        )
+
+    def _ensure_platform_tags(
+        self,
+        result: ExtractionResult,
+        cleaned_transcript: str,
+        meeting_title: str = "",
+        platform: str = "",
+    ) -> None:
+        """Assigns Zoom (USR-xxx) or Google Meet (P0x) tag IDs if meeting is on that platform."""
+        platform_lower = (platform or "").lower()
+        title_lower = (meeting_title or "").lower()
+        transcript_lower = cleaned_transcript.lower()
+
+        is_zoom = bool(
+            "zoom" in platform_lower
+            or "zoom" in title_lower
+            or "zoom" in transcript_lower
+            or "usr-" in transcript_lower
+        )
+        is_google_meet = bool(
+            "meet" in platform_lower
+            or "google meet" in title_lower
+            or "google meet" in transcript_lower
+            or "meet.google" in transcript_lower
+            or "p0" in transcript_lower
+        )
+
+        if not (is_zoom or is_google_meet):
+            return
+
+        prefix = "USR-" if is_zoom else "P"
+        start_num = 101 if is_zoom else 1
+        allocated_tags = set(result.speaker_map.keys())
+        tag_counter = start_num
+        name_to_tag = {v: k for k, v in result.speaker_map.items() if k != v}
+
+        for spk in result.speakers:
+            if spk in result.speaker_map or spk in name_to_tag:
+                continue
+            while True:
+                candidate = f"{prefix}{tag_counter}" if is_zoom else f"{prefix}{tag_counter:02d}"
+                if candidate not in allocated_tags:
+                    tag_id = candidate
+                    allocated_tags.add(tag_id)
+                    tag_counter += 1
+                    break
+                tag_counter += 1
+            result.speaker_map[tag_id] = spk
+            name_to_tag[spk] = tag_id
+
+        for turn in result.dialogue_turns:
+            if not turn.speaker_id:
+                if turn.speaker in name_to_tag:
+                    turn.speaker_id = name_to_tag[turn.speaker]
+                elif turn.speaker in result.speaker_map:
+                    turn.speaker_id = turn.speaker
+            elif turn.speaker_id in result.speaker_map:
+                turn.speaker = result.speaker_map[turn.speaker_id]
 
     def _try_parse(self, raw_response: str) -> ExtractionResult | None:
         try:

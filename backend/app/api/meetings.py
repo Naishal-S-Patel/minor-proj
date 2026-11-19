@@ -269,6 +269,15 @@ async def create_meeting(
                 if not detected_platform:
                     detected_platform = "Zoom"
 
+        if not detected_platform:
+            fn_lower = (file.filename or "").lower()
+            title_lower = title.lower()
+            text_lower = raw_text.lower()
+            if "zoom" in fn_lower or "zoom" in title_lower or "zoom" in text_lower or "usr-" in text_lower:
+                detected_platform = "Zoom"
+            elif "meet" in fn_lower or "meet" in title_lower or "google meet" in text_lower or "p0" in text_lower:
+                detected_platform = "Google Meet"
+
         meeting = MeetingInDB(
             id="",
             title=title,
@@ -311,6 +320,14 @@ async def create_meeting(
                 status_code=413,
                 detail=f"Audio too long. Maximum: {settings.audio_max_duration_seconds // 3600} hours",
             )
+
+        if not detected_platform:
+            fn_lower = (file.filename or "").lower()
+            title_lower = title.lower()
+            if "zoom" in fn_lower or "zoom" in title_lower:
+                detected_platform = "Zoom"
+            elif "meet" in fn_lower or "meet" in title_lower:
+                detected_platform = "Google Meet"
 
         meeting = MeetingInDB(
             id="",

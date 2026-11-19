@@ -62,10 +62,21 @@ async def run_extraction_pipeline(
             # meaningless "extraction" -- fail clearly here instead.
             raise ValueError("Cannot extract insights from an empty transcript")
 
-        # 2. Call the LLM extraction service (owns its own retry logic
-        # internally -- see GeminiClient's @retry decorator and
-        # ExtractionService's JSON-fix retry).
-        result = await extraction_service.extract(cleaned_transcript)
+        # 2. Call the LLM extraction service with meeting platform & title context
+        meeting = await repo.get_by_id(meeting_id)
+        meeting_title = meeting.title if meeting else ""
+        meeting_platform = meeting.platform if meeting else ""
+        if not meeting_platform or meeting_platform in ("Meeting", "Audio Recording"):
+            if "zoom" in meeting_title.lower() or "zoom" in cleaned_transcript.lower() or "usr-" in cleaned_transcript.lower():
+                meeting_platform = "Zoom"
+            elif "meet" in meeting_title.lower() or "meet" in cleaned_transcript.lower() or "p0" in cleaned_transcript.lower():
+                meeting_platform = "Google Meet"
+
+        result = await extraction_service.extract(
+            cleaned_transcript,
+            meeting_title=meeting_title,
+            platform=meeting_platform,
+        )
 
         # 3. Save extracted fields, advance to PROCESSED.
         #
@@ -136,6 +147,7 @@ async def run_extraction_pipeline(
                 "sentiment": result.sentiment,
                 "speakers": result.speakers,
                 "speaker_map": result.speaker_map,
+                "platform": meeting_platform,
                 "calendar_events": [e.model_dump() for e in calendar_events],
                 "dialogue_turns": [d.model_dump() for d in dialogue_turns],
                 "detected_language": result.detected_language,
