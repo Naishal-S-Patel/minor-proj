@@ -30,11 +30,15 @@ class ChatFailedError(Exception):
 class ChatService:
     """High-level entry point: answers questions using meeting context."""
 
-    def __init__(self, client: Any = None) -> None:
+    def __init__(self, client: Any = None, enable_fallback: bool | None = None) -> None:
         if client is not None:
             self._client = client
         else:
             self._client = self._init_client()
+        if enable_fallback is None:
+            self.enable_fallback = False if (client is not None) else True
+        else:
+            self.enable_fallback = enable_fallback
 
     def _init_client(self):
         try:
@@ -84,6 +88,8 @@ class ChatService:
                 if raw_response and raw_response.strip():
                     return raw_response.strip()
             except Exception as exc:
+                if not self.enable_fallback:
+                    raise ChatFailedError(f"Chat generation failed: {exc}") from exc
                 logger.warning(
                     "External LLM chat failed (%s: %s). Activating SmartLocalQABot fallback.",
                     type(exc).__name__,

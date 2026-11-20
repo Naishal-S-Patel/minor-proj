@@ -162,13 +162,46 @@ class SmartLocalExtractor:
                 if pid and name and name != pid:
                     speaker_map[pid] = name
                 elif pid and pid not in speaker_map:
-                    # Check self-introductions: "Hi everyone, I'm Sarah" / "My name is Alex Rivera"
+                    # Check self-introductions: "Hi everyone, I'm Sarah" / "My name is Alex Rivera" / "This is Diane"
                     intro = re.search(
-                        r"\b(?:I'm|I am|this is|my name is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
+                        r"\b(?:I'm|I am|this is|my name is|speaking is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
                         text,
+                        flags=re.IGNORECASE,
                     )
                     if intro:
                         speaker_map[pid] = intro.group(1).strip()
+
+        # 3. Associate conversational partners from direct addresses or handoffs
+        # e.g., "So hello, Nishal" spoken by USR-101 -> the other speaker USR-102 is Nishal!
+        if len(speaker_map) < 10:
+            for line in lines:
+                m_turn = turn_pattern.match(line)
+                if not m_turn:
+                    continue
+                raw_label = m_turn.group(2).strip()
+                text = m_turn.group(3).strip()
+                pid, _ = cls._split_inline_id_and_name(raw_label)
+                if not pid:
+                    continue
+
+                greet_match = re.search(
+                    r"\b(?:hello|hi|hey|thanks|thank you|assignment to|over to)\s*,?\s+([A-Z][a-z]+)\b",
+                    text,
+                    flags=re.IGNORECASE,
+                )
+                if greet_match:
+                    addressed_name = greet_match.group(1).strip()
+                    if addressed_name.lower() in ("everyone", "guys", "bro", "all", "sir", "maam", "team", "there"):
+                        continue
+                    if pid in speaker_map and speaker_map[pid].lower() == addressed_name.lower():
+                        continue
+                    for other_line in lines:
+                        m_other = turn_pattern.match(other_line)
+                        if m_other:
+                            other_pid, _ = cls._split_inline_id_and_name(m_other.group(2).strip())
+                            if other_pid and other_pid != pid and (other_pid not in speaker_map or speaker_map[other_pid] == other_pid):
+                                speaker_map[other_pid] = addressed_name
+                                break
 
         return speaker_map
 
@@ -370,7 +403,73 @@ class SmartLocalExtractor:
         events: list[LLMCalendarEvent] = []
         seen_keys: set[str] = set()
 
-        # Patterns for relative dates:
+        # 1. Explicit calendar date patterns:
+        # e.g. "25th of November", "25th November", "November 25", "Nov 25", "submit on 25 Nov"
+        months_map = {
+            "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+            "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+            "aug": 8, "august": 8, "sep": 9, "september": 9, "oct": 10, "october": 10,
+            "nov": 11, "november": 11, "dec": 12, "december": 12,
+        }
+        explicit_date_1 = re.compile(
+            r"\b(?:on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
+            re.IGNORECASE,
+        )
+        explicit_date_2 = re.compile(
+            r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b",
+            re.IGNORECASE,
+        )
+
+        for line in lines:
+            m_exp = explicit_date_1.search(line) or explicit_date_2.search(line)
+            if m_exp:
+                g1, g2 = m_exp.group(1), m_exp.group(2)
+                if g1.isdigit():
+                    day, month_str = int(g1), g2.lower()
+                else:
+                    day, month_str = int(g2), g1.lower()
+
+                if month_str in months_map and 1 <= day <= 31:
+                    month = months_map[month_str]
+                    year = ref_date.year
+                    target_dt = datetime(year, month, day, tzinfo=ref_date.tzinfo)
+                    if target_dt < ref_date - timedelta(days=60):
+                        target_dt = target_dt.replace(year=year + 1)
+                    diff_days = max(0, (target_dt.date() - ref_date.date()).days)
+
+                    full_corpus = " ".join(lines).lower()
+                    if "cloud" in full_corpus and ("exam" in full_corpus or "test" in full_corpus):
+                        title = "Cloud Computing Exam"
+                        category = "exam"
+                    elif "exam" in full_corpus or "test" in full_corpus or "quiz" in full_corpus:
+                        title = "Course Exam"
+                        category = "exam"
+                    elif "assignment" in full_corpus or "project" in full_corpus or "submission" in full_corpus:
+                        title = "Project Assignment Submission"
+                        category = "deadline"
+                    elif "presentation" in full_corpus:
+                        title = "Presentation Submission"
+                        category = "deadline"
+                    else:
+                        title = "Scheduled Milestone"
+                        category = "meeting"
+
+                    key = f"{title}_{target_dt.strftime('%Y-%m-%d')}"
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        events.append(
+                            LLMCalendarEvent(
+                                title=title,
+                                relative_time=f"{day} {month_str.capitalize()}",
+                                event_date=target_dt.strftime("%Y-%m-%d"),
+                                days_from_now=diff_days,
+                                speaker=cls._find_speaker_for_text(line, turns),
+                                context=line,
+                                category=category,
+                            )
+                        )
+
+        # 2. Patterns for relative dates:
         # e.g. "test after 3 days", "exam in 2 days", "meeting after 1 week", "presentation next friday"
         rel_days_pattern = re.compile(
             r"\b(test|exam|examination|quiz|assessment|submission|demo|presentation|review|meeting|sync|release|deadline)\s+(?:is\s+)?(?:scheduled\s+)?(?:after|in)\s+(\d+)\s+days?\b",

@@ -40,10 +40,11 @@ class LLMActionItem(BaseModel):
 
 
 class LLMCalendarEvent(BaseModel):
-    """Calendar event or scheduled milestone extracted from transcript (e.g. 'test after 3 days')."""
+    """Calendar event or scheduled milestone extracted from transcript (e.g. 'test after 3 days', '25th November')."""
 
-    title: str = Field(..., description="Short title e.g. 'Test / Quiz', 'Sprint Review'")
-    relative_time: str = Field(..., description="Relative phrase e.g. 'after 3 days', 'tomorrow at 4pm'")
+    title: str = Field(..., description="Short title e.g. 'Test / Quiz', 'Sprint Review', 'Cloud Exam'")
+    relative_time: str = Field(..., description="Relative phrase e.g. 'after 3 days', 'tomorrow at 4pm', '25th November'")
+    event_date: str | None = Field(default=None, description="Explicit ISO event date e.g. '2026-11-25'")
     days_from_now: int | None = Field(default=None, description="Estimated number of days from meeting date")
     speaker: str | None = None
     context: str = ""

@@ -21,8 +21,12 @@ def _make_client_with_mocked_sdk() -> tuple[GeminiClient, MagicMock]:
         mock_settings.llm_max_output_tokens = 2048
         mock_settings.llm_request_timeout_seconds = 60
         mock_settings.llm_max_retries = 2
-        client = GeminiClient()
-    return client, client._client
+        with patch("google.genai.Client") as mock_cls:
+            mock_sdk = MagicMock()
+            mock_cls.return_value = mock_sdk
+            client = GeminiClient()
+            client._client = mock_sdk
+    return client, mock_sdk
 
 
 def _mock_gemini_response(text: str) -> MagicMock:

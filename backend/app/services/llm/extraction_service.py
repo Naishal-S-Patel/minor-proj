@@ -12,10 +12,11 @@ Resilient multi-tier strategy:
 
 import json
 import logging
+from typing import Any
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.services.llm.gemini_client import GeminiClient, LLMRequestError as GeminiRequestError, LLMTimeoutError as GeminiTimeoutError
+from app.services.llm.gemini_client import GeminiClient, LLMRequestError, LLMTimeoutError
 from app.services.llm.groq_client import GroqClient, LLMRequestError as GroqRequestError, LLMTimeoutError as GroqTimeoutError
 from app.services.llm.prompts import build_extraction_prompt
 from app.services.llm.schemas import ExtractionResult
@@ -43,11 +44,15 @@ class ExtractionFailedError(Exception):
 class ExtractionService:
     """High-level entry point: given a cleaned transcript, returns a validated ExtractionResult."""
 
-    def __init__(self, client: GeminiClient | GroqClient | None = None) -> None:
+    def __init__(self, client: Any = None, enable_fallback: bool | None = None) -> None:
         if client is not None:
             self._client = client
         else:
             self._client = self._init_client()
+        if enable_fallback is None:
+            self.enable_fallback = False if (client is not None) else True
+        else:
+            self.enable_fallback = enable_fallback
 
     def _init_client(self):
         """Attempts to initialize the configured LLM client."""
@@ -125,7 +130,13 @@ class ExtractionService:
                 if retry_result is not None:
                     self._ensure_platform_tags(retry_result, cleaned_transcript, meeting_title, platform)
                     return retry_result
+                if not self.enable_fallback:
+                    raise ExtractionFailedError("Failed to parse LLM extraction response after retry")
             except Exception as exc:
+                if not self.enable_fallback:
+                    if isinstance(exc, (LLMRequestError, LLMTimeoutError)):
+                        raise ExtractionFailedError(f"LLM request failed: {exc}") from exc
+                    raise
                 logger.warning(
                     "External LLM extraction call failed (%s: %s). Activating SmartLocalExtractor fallback.",
                     type(exc).__name__,

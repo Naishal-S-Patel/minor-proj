@@ -28,7 +28,7 @@ class FakeAudioService:
         self._transcript = transcript
         self._exception = exception
 
-    def transcribe(self, audio_bytes: bytes, filename: str) -> str:
+    def transcribe(self, audio_bytes: bytes, filename: str, *args, **kwargs) -> str:
         if self._exception is not None:
             raise self._exception
         return self._transcript
@@ -45,7 +45,7 @@ class FakeExtractionService:
         self.call_count = 0
         self.received_transcripts: list[str] = []
 
-    async def extract(self, cleaned_transcript: str) -> ExtractionResult:
+    async def extract(self, cleaned_transcript: str, *args, **kwargs) -> ExtractionResult:
         self.call_count += 1
         self.received_transcripts.append(cleaned_transcript)
         return self._result

@@ -111,8 +111,20 @@ async def run_extraction_pipeline(
         now = datetime.now(timezone.utc)
         calendar_events = []
         for ev in result.calendar_events:
-            days = ev.days_from_now if ev.days_from_now is not None else 3
-            target_dt = now + timedelta(days=days)
+            target_dt = None
+            if getattr(ev, "event_date", None):
+                try:
+                    target_dt = datetime.fromisoformat(ev.event_date)
+                    if target_dt.tzinfo is None:
+                        target_dt = target_dt.replace(tzinfo=timezone.utc)
+                    days = max(0, (target_dt.date() - now.date()).days)
+                except Exception:
+                    target_dt = None
+
+            if target_dt is None:
+                days = ev.days_from_now if ev.days_from_now is not None else 3
+                target_dt = now + timedelta(days=days)
+
             calendar_events.append(
                 CalendarEvent(
                     id=uuid.uuid4().hex[:8],

@@ -34,10 +34,12 @@ async def lifespan(app: FastAPI):
     — exactly once, not per-request.
     """
     logger.info("Starting %s (environment=%s)", settings.app_name, settings.environment)
-    if not settings.testing:
+    import os
+    is_testing = settings.testing or os.environ.get("TESTING", "").lower() == "true"
+    if not is_testing:
         await connect_to_mongo()
     yield
-    if not settings.testing:
+    if not is_testing:
         await close_mongo_connection()
     logger.info("Shutdown complete")
 

@@ -32,7 +32,7 @@ class FakeExtractionService:
         self.call_count = 0
         self.received_transcripts: list[str] = []
 
-    async def extract(self, cleaned_transcript: str) -> ExtractionResult:
+    async def extract(self, cleaned_transcript: str, *args, **kwargs) -> ExtractionResult:
         self.call_count += 1
         self.received_transcripts.append(cleaned_transcript)
         if self._exception is not None:

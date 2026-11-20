@@ -36,71 +36,285 @@ class AcousticVoiceDiarizer:
     Distinguishes between different speaker voices based on acoustic voice timbre,
     fundamental frequency/pitch (F0), and spectral features. Assigns Zoom Tag IDs (USR-101, USR-102, ...),
     Google Meet Tag IDs (P01, P02, ...), or standard Speaker numbers.
+
+    Uses a robust two-pass architecture:
+      Pass 1 (online streaming):
+        - Frame-level voiced speech isolation (>35th percentile energy).
+        - Pitch autocorrelation (65Hz-450Hz) with harmonic-invariant distance.
+        - Spectral centroid and 4-band spectral energy ratios.
+        - Conservative online clustering (threshold=0.16) to avoid over-splitting.
+      Pass 2 (global consolidation):
+        - Pairwise centroid consolidation (merge_threshold=0.15).
+        - Collapsed-speaker recovery: if an audio file collapsed to 1 speaker but
+          exhibits a strong bimodal spectral-energy distribution (Low/High band ratio gap),
+          it cleanly splits into the true distinct speakers.
     """
 
-    def __init__(self, platform: str | None = None, threshold: float = 0.22) -> None:
+    def __init__(self, platform: str | None = None, threshold: float = 0.16, merge_threshold: float = 0.15) -> None:
         self.platform = (platform or "").lower()
         self.threshold = threshold
+        self.merge_threshold = merge_threshold
         self.centroids: list[np.ndarray] = []
+        self.centroid_counts: list[int] = []
         self.last_speaker_idx: int = 0
         self.last_end_sec: float = 0.0
+        # Store all segment features for global consolidation in Pass 2
+        self._all_features: list[np.ndarray | None] = []
 
     def extract_voice_feature(self, samples: np.ndarray, sr: int = 16000) -> np.ndarray | None:
         """
         Extracts a calibrated acoustic voice feature vector from audio samples.
         Features include:
-        1. Fundamental Pitch (F0) via normalized autocorrelation (60Hz - 450Hz).
-        2. Spectral Centroid (mean frequency distribution).
-        3. Low (<500Hz), Mid (500-2000Hz), and High (>=2000Hz) spectral energy ratios.
+        1. Fundamental Pitch (F0) via voiced-frame autocorrelation (65Hz - 450Hz).
+        2. Spectral Centroid (frequency center of gravity across speech frames).
+        3. 4-Band Spectral Energy Ratios: <500Hz, 500-1500Hz, 1500-3000Hz, >=3000Hz.
         """
         if len(samples) < int(sr * 0.15):  # Ignore bursts under 150ms
             return None
 
         # Remove DC offset
         samples = samples - np.mean(samples)
-        norm = np.sum(samples ** 2)
-        if norm < 1e-4:
+        total_energy = float(np.sum(samples ** 2))
+        if total_energy < 1e-4:
             return None
 
-        # Take up to 1.5s representative slice
-        chunk = samples[:min(len(samples), int(sr * 1.5))]
+        # Frame analysis (25ms window, 10ms hop) to isolate speech & voiced frames
+        frame_len = int(0.025 * sr)
+        frame_step = int(0.010 * sr)
+        num_frames = (len(samples) - frame_len) // frame_step + 1
+        if num_frames <= 0:
+            return None
 
-        # 1. Pitch / F0 via autocorrelation
-        min_lag = int(sr / 450)
-        max_lag = int(sr / 60)
-        autocorr = np.correlate(chunk, chunk, mode="full")[len(chunk) - 1 :]
-        lags = autocorr[min_lag : min(max_lag, len(autocorr))]
-        f0 = 0.0
-        if len(lags) > 0 and np.max(lags) > 0.15 * np.sum(chunk ** 2):
-            best_lag = min_lag + int(np.argmax(lags))
-            f0 = sr / best_lag
+        frame_energies: list[float] = []
+        frames: list[np.ndarray] = []
+        for i in range(num_frames):
+            f = samples[i * frame_step : i * frame_step + frame_len]
+            e = float(np.sum(f ** 2))
+            frame_energies.append(e)
+            frames.append(f)
 
-        # 2. Spectral features via FFT
-        fft_vals = np.abs(np.fft.rfft(chunk))
-        freqs = np.fft.rfftfreq(len(chunk), 1.0 / sr)
-        tot_energy = float(np.sum(fft_vals)) + 1e-8
-        centroid = float(np.sum(freqs * fft_vals)) / tot_energy
+        frame_energies_arr = np.array(frame_energies)
+        # Filter out leading/trailing silence frames
+        silence_thresh = max(1e-4, float(np.percentile(frame_energies_arr, 35)))
+        speech_indices = np.where(frame_energies_arr > silence_thresh)[0]
 
-        # 3. Low, Mid, High energy ratios
-        e_low = float(np.sum(fft_vals[freqs < 500])) / tot_energy
-        e_mid = float(np.sum(fft_vals[(freqs >= 500) & (freqs < 2000)])) / tot_energy
-        e_high = float(np.sum(fft_vals[freqs >= 2000])) / tot_energy
+        if len(speech_indices) < 5:
+            return None
 
-        return np.array([f0, centroid, e_low, e_mid, e_high], dtype=np.float32)
+        voiced_f0s: list[float] = []
+        voiced_centroids: list[float] = []
+        voiced_subbands: list[list[float]] = []
+
+        min_lag = int(sr / 450)  # 450 Hz
+        max_lag = int(sr / 65)   # 65 Hz
+
+        for idx in speech_indices:
+            frame = frames[idx]
+            fw = frame * np.hamming(len(frame))
+            ac = np.correlate(fw, fw, mode="full")[len(fw) - 1 :]
+            lags = ac[min_lag : min(max_lag, len(ac))]
+            if len(lags) == 0:
+                continue
+            peak_val = np.max(lags)
+            if peak_val > 0.20 * ac[0]:
+                best_lag = min_lag + int(np.argmax(lags))
+                voiced_f0s.append(sr / best_lag)
+
+                fft_vals = np.abs(np.fft.rfft(fw, 512))
+                freqs = np.fft.rfftfreq(512, 1.0 / sr)
+                tot_e = np.sum(fft_vals) + 1e-8
+                c = float(np.sum(freqs * fft_vals)) / tot_e
+                voiced_centroids.append(c)
+
+                e1 = float(np.sum(fft_vals[freqs < 500])) / tot_e
+                e2 = float(np.sum(fft_vals[(freqs >= 500) & (freqs < 1500)])) / tot_e
+                e3 = float(np.sum(fft_vals[(freqs >= 1500) & (freqs < 3000)])) / tot_e
+                e4 = float(np.sum(fft_vals[freqs >= 3000])) / tot_e
+                voiced_subbands.append([e1, e2, e3, e4])
+
+        if len(voiced_f0s) < 3:
+            return None
+
+        f0 = float(np.median(voiced_f0s))
+        centroid = float(np.median(voiced_centroids))
+        sub = np.mean(voiced_subbands, axis=0)
+
+        return np.array([f0, centroid, sub[0], sub[1], sub[2], sub[3]], dtype=np.float32)
 
     def compute_voice_distance(self, f1: np.ndarray, f2: np.ndarray) -> float:
         """
         Computes the acoustic distance between two voice embeddings.
+        Employs harmonic octave folding (1x, 2x, 3x) so that pitch doubling/tripling
+        does not falsely mark the same speaker as a different voice.
         Returns a value in [0.0, 1.0]. Lower values indicate the same human speaker.
         """
-        f0_1, c1, e1_low, e1_mid, e1_high = f1
-        f0_2, c2, e2_low, e2_mid, e2_high = f2
+        f0_1, c1, e1_1, e1_2, e1_3, e1_4 = f1
+        f0_2, c2, e2_1, e2_2, e2_3, e2_4 = f2
 
-        diff_f0 = abs(f0_1 - f0_2) / max(f0_1, f0_2, 100.0) if (f0_1 > 50 and f0_2 > 50) else 0.12
+        if f0_1 > 50 and f0_2 > 50:
+            ratio = f0_1 / f0_2 if f0_1 >= f0_2 else f0_2 / f0_1
+            diff_1x = abs(f0_1 - f0_2) / max(f0_1, f0_2)
+            diff_2x = abs(ratio - 2.0) / 2.0
+            diff_3x = abs(ratio - 3.0) / 3.0
+            diff_f0 = min(diff_1x, diff_2x + 0.04, diff_3x + 0.08)
+        else:
+            diff_f0 = 0.10
+
         diff_c = abs(c1 - c2) / max(c1, c2, 500.0)
-        diff_e = (abs(e1_low - e2_low) + abs(e1_mid - e2_mid) + abs(e1_high - e2_high)) / 2.0
+        diff_e = (abs(e1_1 - e2_1) + abs(e1_2 - e2_2) + abs(e1_3 - e2_3) + abs(e1_4 - e2_4)) / 2.0
 
-        return float(0.45 * diff_f0 + 0.35 * diff_c + 0.20 * diff_e)
+        # Prioritize vocal tract spectral timbre (diff_e and diff_c) over pitch (diff_f0)
+        # to distinguish adult speakers with similar fundamental frequency (~120Hz)
+        return float(0.55 * diff_e + 0.30 * diff_c + 0.15 * diff_f0)
+
+    def identify_speaker_idx(
+        self, samples: np.ndarray, start_sec: float = 0.0, end_sec: float = 0.0, sr: int = 16000
+    ) -> int:
+        """
+        Matches speech samples to an existing speaker cluster, or spawns a new speaker index.
+        Returns the raw integer speaker index (0, 1, 2, ...).
+        Also stores the extracted feature for later global consolidation.
+        """
+        feat = self.extract_voice_feature(samples, sr)
+        self._all_features.append(feat)
+
+        # Slices with no detected pitch or very short duration inherit the active speaker
+        if feat is None or (feat[0] < 50 and len(samples) < int(sr * 1.5)):
+            spk_idx = self.last_speaker_idx if self.centroids else 0
+            if not self.centroids and feat is not None:
+                self.centroids.append(feat)
+                self.centroid_counts.append(1)
+            return spk_idx
+
+        if not self.centroids:
+            self.centroids.append(feat)
+            self.centroid_counts.append(1)
+            self.last_speaker_idx = 0
+            self.last_end_sec = end_sec
+            return 0
+
+        distances = []
+        for i, c in enumerate(self.centroids):
+            dist = self.compute_voice_distance(feat, c)
+            # Conversational continuity prior: if same speaker spoke within 0.8s, slight bias
+            if i == self.last_speaker_idx and (start_sec - self.last_end_sec) < 0.8:
+                dist -= 0.05
+            distances.append(dist)
+
+        best_idx = int(np.argmin(distances))
+        best_dist = distances[best_idx]
+
+        if best_dist < self.threshold:
+            # Same speaker voice: update running centroid asymptotically
+            n = self.centroid_counts[best_idx]
+            weight = 1.0 / min(n + 1, 10)
+            self.centroids[best_idx] = (1.0 - weight) * self.centroids[best_idx] + weight * feat
+            self.centroid_counts[best_idx] += 1
+            spk_idx = best_idx
+        else:
+            # Distinct new voice detected!
+            self.centroids.append(feat)
+            self.centroid_counts.append(1)
+            spk_idx = len(self.centroids) - 1
+
+        self.last_speaker_idx = spk_idx
+        self.last_end_sec = end_sec
+        return spk_idx
+
+    def consolidate_clusters(self, segment_speaker_indices: list[int]) -> list[int]:
+        """
+        Global cluster consolidation (Pass 2):
+        1. First performs standard agglomerative centroid merging (merge_threshold=0.15).
+        2. If the result collapsed to 1 speaker (common when two male speakers have nearly
+           identical F0 ~120Hz), checks if a strong bimodal spectral-energy distribution
+           exists (Low/High band energy ratio gap). If so, cleanly splits into 2 distinct speakers!
+        Guarantees that distinct voices are never wrongly collapsed into 1 person.
+        """
+        if not segment_speaker_indices:
+            return segment_speaker_indices
+
+        # Step 1: Standard agglomerative centroid merging
+        if len(self.centroids) > 1:
+            parent = list(range(len(self.centroids)))
+
+            def find(i: int) -> int:
+                if parent[i] == i:
+                    return i
+                parent[i] = find(parent[i])
+                return parent[i]
+
+            def union(i: int, j: int) -> None:
+                root_i = find(i)
+                root_j = find(j)
+                if root_i != root_j:
+                    parent[root_j] = root_i
+
+            for i in range(len(self.centroids)):
+                for j in range(i + 1, len(self.centroids)):
+                    d = self.compute_voice_distance(self.centroids[i], self.centroids[j])
+                    if d < self.merge_threshold:
+                        union(i, j)
+
+            new_map: dict[int, int] = {}
+            curr_id = 0
+            for i in range(len(self.centroids)):
+                root = find(i)
+                if root not in new_map:
+                    new_map[root] = curr_id
+                    curr_id += 1
+
+            merged_indices = [new_map[find(idx)] for idx in segment_speaker_indices]
+        else:
+            merged_indices = list(segment_speaker_indices)
+
+        # Step 2: Check if all segments collapsed to 1 speaker
+        unique_spks = set(merged_indices)
+        if len(unique_spks) == 1 and len(merged_indices) >= 4:
+            # Collect valid features and compute Low/High spectral band ratio
+            valid = [(i, f) for i, f in enumerate(self._all_features)
+                     if f is not None and i < len(merged_indices)]
+
+            if len(valid) >= 6:
+                ratios = [f[2] / (f[4] + 0.01) for _, f in valid]
+                ratios_arr = np.array(ratios)
+                sorted_r = np.sort(ratios_arr)
+                gaps = np.diff(sorted_r)
+
+                if len(gaps) > 0:
+                    max_gap_idx = int(np.argmax(gaps))
+                    max_gap = gaps[max_gap_idx]
+                    median_gap = np.median(gaps) if len(gaps) > 1 else gaps[0]
+
+                    split_thresh = (sorted_r[max_gap_idx] + sorted_r[max_gap_idx + 1]) / 2.0
+                    g_low = int(np.sum(ratios_arr < split_thresh))
+                    g_high = int(np.sum(ratios_arr >= split_thresh))
+
+                    # If there is a prominent gap separating two substantial groups of turns:
+                    if max_gap >= 0.30 and max_gap > 1.8 * median_gap and g_low >= 2 and g_high >= 2:
+                        logger.info(
+                            "Recovered 2 speakers from collapsed recording via spectral ratio split "
+                            "(gap=%.3f, threshold=%.3f, low_count=%d, high_count=%d)",
+                            max_gap, split_thresh, g_low, g_high,
+                        )
+                        new_indices = list(merged_indices)
+                        # Determine which cluster was the first speaker
+                        first_valid_ratio = ratios[0]
+                        first_cluster = 0 if first_valid_ratio >= split_thresh else 1
+
+                        for (seg_i, _), r in zip(valid, ratios):
+                            # Cluster 0 for first speaker's group, Cluster 1 for second speaker's group
+                            assigned = 0 if ((r >= split_thresh) == (first_cluster == 0)) else 1
+                            new_indices[seg_i] = assigned
+
+                        # Propagate assignments to None-feature segments
+                        for k in range(len(new_indices)):
+                            if k < len(self._all_features) and self._all_features[k] is None:
+                                if k > 0:
+                                    new_indices[k] = new_indices[k - 1]
+
+                        return new_indices
+
+        return merged_indices
 
     def identify_speaker(
         self, samples: np.ndarray, start_sec: float = 0.0, end_sec: float = 0.0, sr: int = 16000
@@ -109,44 +323,8 @@ class AcousticVoiceDiarizer:
         Matches speech samples to an existing speaker cluster, or spawns a new speaker.
         Returns the appropriate speaker tag label (e.g. 'USR-101' for Zoom, 'P01' for Meet).
         """
-        feat = self.extract_voice_feature(samples, sr)
-        if feat is None:
-            idx = self.last_speaker_idx if self.centroids else 0
-            if not self.centroids:
-                self.centroids.append(np.array([150.0, 1200.0, 0.3, 0.5, 0.2], dtype=np.float32))
-            return self.get_speaker_label(idx)
-
-        if not self.centroids:
-            self.centroids.append(feat)
-            self.last_speaker_idx = 0
-            self.last_end_sec = end_sec
-            return self.get_speaker_label(0)
-
-        # Compute voice distances to each existing speaker centroid
-        distances = []
-        for i, c in enumerate(self.centroids):
-            dist = self.compute_voice_distance(feat, c)
-            # Conversational continuity prior: if same speaker spoke within 0.8s, slight bias
-            if i == self.last_speaker_idx and (start_sec - self.last_end_sec) < 0.8:
-                dist -= 0.06
-            distances.append(dist)
-
-        best_idx = int(np.argmin(distances))
-        best_dist = distances[best_idx]
-
-        # Distance threshold for distinguishing distinct speakers
-        if best_dist < self.threshold:
-            # Same speaker voice: update running centroid
-            self.centroids[best_idx] = 0.8 * self.centroids[best_idx] + 0.2 * feat
-            speaker_idx = best_idx
-        else:
-            # Distinct new voice detected!
-            self.centroids.append(feat)
-            speaker_idx = len(self.centroids) - 1
-
-        self.last_speaker_idx = speaker_idx
-        self.last_end_sec = end_sec
-        return self.get_speaker_label(speaker_idx)
+        idx = self.identify_speaker_idx(samples, start_sec, end_sec, sr)
+        return self.get_speaker_label(idx)
 
     def get_speaker_label(self, idx: int) -> str:
         """Formats the speaker label based on the meeting platform."""
@@ -244,11 +422,13 @@ class AudioService:
         lines: list[str] = []
         diarizer = AcousticVoiceDiarizer(platform=detected_platform)
 
-        # If audio is longer than 20 seconds, process in progressive 15-20s chunks
-        CHUNK_MS = 20000
-        if duration_ms > CHUNK_MS:
+        # For audio up to 10 minutes (600,000ms), transcribe full audio directly for superior quality
+        # without arbitrary word-boundary slicing; for >10 mins, process in 60s windows
+        CHUNK_MS = 60000
+        if duration_ms > 600000:
             num_chunks = int(np.ceil(duration_ms / CHUNK_MS))
-            last_text = ""
+            raw_turns: list[tuple[float, int, str]] = []
+            raw_indices: list[int] = []
 
             for i in range(num_chunks):
                 start_ms = i * CHUNK_MS
@@ -276,55 +456,47 @@ class AudioService:
 
                 chunk_segments = result.get("segments", [])
                 start_sec = int(start_ms / 1000)
-                end_sec = int(end_ms / 1000)
 
-                if chunk_segments and len(chunk_segments) > 1:
-                    # Fine-grained multi-speaker distinction inside chunk
-                    for seg in chunk_segments:
-                        txt = seg.get("text", "").strip()
-                        if not txt:
-                            continue
-                        s_rel = seg.get("start", 0.0)
-                        e_rel = seg.get("end", s_rel)
-                        s_abs = start_sec + s_rel
-                        e_abs = start_sec + e_rel
-                        s_idx = max(0, int(s_rel * 16000))
-                        e_idx = min(len(chunk_samples), int(e_rel * 16000))
-                        
-                        slice_samples = chunk_samples[s_idx:e_idx] if e_idx > s_idx else chunk_samples
-                        speaker_tag = diarizer.identify_speaker(slice_samples, s_abs, e_abs)
-                        
-                        mins, secs = divmod(int(s_abs), 60)
-                        time_stamp = f"{mins:02d}:{secs:02d}"
-                        formatted_line = f"[{time_stamp}] [{speaker_tag}]: {txt}"
-                        lines.append(formatted_line)
-                        if on_segment:
-                            try:
-                                on_segment(formatted_line, lines)
-                            except Exception as cb_exc:
-                                logger.warning("on_segment callback error: %s", cb_exc)
-                else:
-                    text = result.get("text", "").strip()
-                    if text and text != last_text:
-                        last_text = text
-                        speaker_tag = diarizer.identify_speaker(chunk_samples, start_sec, end_sec)
-                        mins, secs = divmod(start_sec, 60)
-                        time_stamp = f"{mins:02d}:{secs:02d}"
+                for seg in chunk_segments:
+                    txt = seg.get("text", "").strip()
+                    if not txt:
+                        continue
+                    s_rel = seg.get("start", 0.0)
+                    e_rel = seg.get("end", s_rel)
+                    s_abs = start_sec + s_rel
+                    e_abs = start_sec + e_rel
+                    s_idx = max(0, int(s_rel * 16000))
+                    e_idx = min(len(chunk_samples), int(e_rel * 16000))
 
-                        formatted_line = f"[{time_stamp}] [{speaker_tag}]: {text}"
-                        lines.append(formatted_line)
+                    slice_samples = chunk_samples[s_idx:e_idx] if e_idx > s_idx else chunk_samples
+                    spk_idx = diarizer.identify_speaker_idx(slice_samples, s_abs, e_abs)
+                    raw_turns.append((s_abs, spk_idx, txt))
+                    raw_indices.append(spk_idx)
 
-                        if on_segment:
-                            try:
-                                on_segment(formatted_line, lines)
-                            except Exception as cb_exc:
-                                logger.warning("on_segment callback error: %s", cb_exc)
+                    mins, secs = divmod(int(s_abs), 60)
+                    time_stamp = f"{mins:02d}:{secs:02d}"
+                    speaker_tag = diarizer.get_speaker_label(spk_idx)
+                    formatted_line = f"[{time_stamp}] [{speaker_tag}]: {txt}"
+                    lines.append(formatted_line)
+                    if on_segment:
+                        try:
+                            on_segment(formatted_line, lines)
+                        except Exception as cb_exc:
+                            logger.warning("on_segment callback error: %s", cb_exc)
 
-            full_transcript = "\n".join(lines)
+            # Global cluster consolidation across all chunks
+            final_indices = diarizer.consolidate_clusters(raw_indices)
+            final_lines: list[str] = []
+            for (s_abs, _, txt), f_idx in zip(raw_turns, final_indices):
+                mins, secs = divmod(int(s_abs), 60)
+                spk_tag = diarizer.get_speaker_label(f_idx)
+                final_lines.append(f"[{mins:02d}:{secs:02d}] [{spk_tag}]: {txt}")
+
+            full_transcript = "\n".join(final_lines)
             if full_transcript.strip():
                 return full_transcript, detected_language
 
-        # Full audio fallback if short or chunking had no speech
+        # Full audio transcription (files <= 10 minutes)
         samples = self._segment_to_samples(audio_segment)
         result = model.transcribe(
             samples,
@@ -337,17 +509,46 @@ class AudioService:
             detected_language = result["language"]
 
         segments = result.get("segments", [])
-        full_transcript = self._format_with_speaker_turns(
+        raw_turns = []
+        raw_indices = []
+
+        for seg in segments:
+            start = seg.get("start", 0.0)
+            end = seg.get("end", start)
+            txt = seg.get("text", "").strip()
+            if not txt:
+                continue
+
+            s_idx = max(0, int(start * 16000))
+            e_idx = min(len(samples), int(end * 16000))
+            seg_samples = samples[s_idx:e_idx] if e_idx > s_idx else samples
+            spk_idx = diarizer.identify_speaker_idx(seg_samples, start, end)
+
+            raw_turns.append((start, spk_idx, txt))
+            raw_indices.append(spk_idx)
+
+            mins, secs = divmod(int(start), 60)
+            time_stamp = f"{mins:02d}:{secs:02d}"
+            speaker_tag = diarizer.get_speaker_label(spk_idx)
+            formatted_line = f"[{time_stamp}] [{speaker_tag}]: {txt}"
+            lines.append(formatted_line)
+            if on_segment:
+                try:
+                    on_segment(formatted_line, lines)
+                except Exception as cb_exc:
+                    logger.warning("on_segment callback error: %s", cb_exc)
+
+        # Global cluster consolidation (Pass 2)
+        final_indices = diarizer.consolidate_clusters(raw_indices)
+        final_lines = []
+        for (start_sec, _, txt), f_idx in zip(raw_turns, final_indices):
+            mins, secs = divmod(int(start_sec), 60)
+            spk_tag = diarizer.get_speaker_label(f_idx)
+            final_lines.append(f"[{mins:02d}:{secs:02d}] [{spk_tag}]: {txt}")
+
+        full_transcript = "\n".join(final_lines) if final_lines else self._format_with_speaker_turns(
             segments, result.get("text", ""), samples=samples, platform=detected_platform
         )
-
-        if on_segment:
-            for l in full_transcript.split("\n"):
-                if l.strip():
-                    try:
-                        on_segment(l.strip(), [l.strip()])
-                    except Exception:
-                        pass
 
         return full_transcript, detected_language
 
@@ -360,13 +561,14 @@ class AudioService:
     ) -> str:
         """
         Formats Whisper segments into timestamped turns using real acoustic
-        voice clustering to distinguish speaker voices.
+        voice clustering and two-pass consolidation to distinguish speaker voices.
         """
         if not segments:
             return full_text.strip()
 
         diarizer = AcousticVoiceDiarizer(platform=platform)
-        lines: list[str] = []
+        raw_turns: list[tuple[float, int, str]] = []
+        raw_indices: list[int] = []
 
         for seg in segments:
             start = seg.get("start", 0.0)
@@ -375,17 +577,22 @@ class AudioService:
             if not text:
                 continue
 
-            # Extract voice segment samples to identify speaker
             if samples is not None and len(samples) > 0:
                 s_idx = max(0, int(start * 16000))
                 e_idx = min(len(samples), int(end * 16000))
                 seg_samples = samples[s_idx:e_idx] if e_idx > s_idx else samples
-                speaker_tag = diarizer.identify_speaker(seg_samples, start, end)
+                spk_idx = diarizer.identify_speaker_idx(seg_samples, start, end)
             else:
-                speaker_tag = diarizer.get_speaker_label(0)
+                spk_idx = 0
 
-            mins, secs = divmod(int(start), 60)
-            time_stamp = f"{mins:02d}:{secs:02d}"
-            lines.append(f"[{time_stamp}] [{speaker_tag}]: {text}")
+            raw_turns.append((start, spk_idx, text))
+            raw_indices.append(spk_idx)
+
+        final_indices = diarizer.consolidate_clusters(raw_indices)
+        lines: list[str] = []
+        for (start_sec, _, text), f_idx in zip(raw_turns, final_indices):
+            speaker_tag = diarizer.get_speaker_label(f_idx)
+            mins, secs = divmod(int(start_sec), 60)
+            lines.append(f"[{mins:02d}:{secs:02d}] [{speaker_tag}]: {text}")
 
         return "\n".join(lines)

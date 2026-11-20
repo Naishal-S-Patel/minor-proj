@@ -253,7 +253,7 @@ class FakeExtractionService:
         self._result = result
         self.call_count = 0  # lets tests assert extraction was actually invoked
 
-    async def extract(self, cleaned_transcript: str) -> ExtractionResult:
+    async def extract(self, cleaned_transcript: str, *args, **kwargs) -> ExtractionResult:
         self.call_count += 1
         return self._result
 
@@ -277,6 +277,19 @@ class FakeUserRepository:
         user.id = f"user-{len(self._users) + 1}"
         self._users[user.google_sub] = user
         return user
+
+
+def pytest_collection_modifyitems(items):
+    import inspect
+    for item in items:
+        if hasattr(item, "obj") and inspect.iscoroutinefunction(item.obj):
+            item.add_marker(pytest.mark.anyio)
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
 
     async def get_by_google_sub(self, google_sub: str) -> UserInDB | None:
         return self._users.get(google_sub)
