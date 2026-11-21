@@ -910,9 +910,15 @@ class SmartLocalExtractor:
 
         # Action items summary
         if actions and actions[0].task != "Review meeting notes and follow up on agreed objectives.":
-            summary_sentences.append(
-                f"Action items were assigned to {actions[0].person} to {actions[0].task.lower()}."
-            )
+            task_text = actions[0].task
+            if re.search(r"[\u0900-\u097F]", task_text):
+                summary_sentences.append(
+                    f"Action items and milestones were noted for {actions[0].person} regarding upcoming preparations."
+                )
+            else:
+                summary_sentences.append(
+                    f"Action items were assigned to {actions[0].person} to {task_text.lower()}."
+                )
         elif not decisions:
             summary_sentences.append(
                 "The team reviewed key timelines, upcoming preparations, and agreed next steps."

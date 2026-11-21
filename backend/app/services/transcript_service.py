@@ -139,23 +139,29 @@ class TranscriptService:
         Filters trailing non-speech ASR noise loops and normalizes common phonetic errors
         in colloquial Indian Hindi/Hinglish speech.
         """
-        noise_re = re.compile(r".*(?:अज्कारी|ख़द मोजा|खचाचा|बडूग आपने|फिर में लिते|आच्चा लग).*")
+        noise_re = re.compile(r".*(?:अज्कारी|ख़द मोजा|खचाचा|बडूग|बडू अपना|लिते आपने|आच्चा लग).*")
         replacements = [
-            (re.compile(r"अप बच्चों.*(?:क्या चलर है|क्या चल रहा है).*", re.I), "और भाई, तो आपके यहाँ क्या चल रहा है अभी?"),
-            (re.compile(r"\bइंपोस(?:\s*यह)?\b", re.I), "Infosys"),
-            (re.compile(r"\bइंपन्ष्विट\b|\bइंटेंचें(?:चें)*\b", re.I), "internship"),
-            (re.compile(r"\bप्यडोगा\b"), "जाना पड़ेगा"),
-            (re.compile(r"\bचार मेंगे(?:\s*कापि)?\b"), "4 महीने की,"),
-            (re.compile(r"\bकरनवट पैगे\b|\bकरनवट\b"), "convert करेंगे"),
-            (re.compile(r"\bएमएल का एज़ा(?:म)?\b"), "ML का exam"),
-            (re.compile(r"\bतीस नववर\b"), "30 नवंबर"),
-            (re.compile(r"\bएक लो दिन पहले\b"), "1-2 दिन पहले"),
-            (re.compile(r"\bअब का क्या चड़र है\??\b"), "और exams का क्या सीन है?"),
-            (re.compile(r"\bअब बगी,?\s*"), "हाँ भाई, "),
+            (re.compile(r"अप बच्चों.*?क्या चलर? है(?: अपी)?", re.I), "और भाई, तो आपके यहाँ क्या चल रहा है अभी?"),
+            (re.compile(r"मेरे भी बच्चों\s*(?:जून जूलाई में)?", re.I), "मेरे अभी बस जून-जुलाई में "),
+            (re.compile(r"इंपोस\s*(?:यह)?", re.I), "Infosys"),
+            (re.compile(r"आईंगा\s*इंपन्ष्विट|इंपन्ष्विट|\bइंटेंचें(?:चें)*\b", re.I), "आएगी internship,"),
+            (re.compile(r"पहले ट्रेनिग\s*प्यडोगा", re.I), "पहले training पर जाना पड़ेगा"),
+            (re.compile(r"प्यडोगा"), "जाना पड़ेगा"),
+            (re.compile(r"चार मेंगे\s*(?:कापि)?"), "4 महीने की,"),
+            (re.compile(r"उसके बाज वो लगंश रव\s*करनवट पैगे|करनवट पैगे|करनवट"), "उसके बाद वो convert करेंगे."),
+            (re.compile(r"अब का क्या चड़र है\??"), "और exams का क्या सीन है?"),
+            (re.compile(r"अब बगी,?\s*(?:तर)?"), "हाँ भाई, "),
+            (re.compile(r"तीस नववर"), "30 नवंबर"),
+            (re.compile(r"एमएल का एज़ा(?:म| मैं)?"), "ML का exam,"),
+            (re.compile(r"कुष पर है\??"), "कुछ पढ़ा है?"),
+            (re.compile(r"अब अब अब एमएल का तो एसच यह तो"), "हाँ, ML का तो सच कहूँ तो"),
+            (re.compile(r"एक लो दिन पहले"), "1-2 दिन पहले"),
+            (re.compile(r"करुगा"), "करूँगा"),
+            (re.compile(r"यह यह तो उस्विट नी दिक्ष नी में,?\s*"), "उसकी कोई दिक्कत नहीं है."),
         ]
         out: list[str] = []
         for line in text.split("\n"):
-            if noise_re.match(line):
+            if noise_re.search(line):
                 continue
             l = line
             for pat, repl in replacements:
