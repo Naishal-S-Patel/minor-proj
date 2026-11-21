@@ -28,6 +28,7 @@ class TranscriptService:
         text = self._parse_webvtt_if_needed(text)
         text = self._strip_timestamps(text)
         text = self._normalize_speaker_labels(text)
+        text = self._deduplicate_repeated_lines(text)
         text = self._collapse_blank_lines(text)
         text = self._strip_line_whitespace(text)
         text = self._remove_non_printable(text)
@@ -108,6 +109,29 @@ class TranscriptService:
         text = re.sub(r"\d{1,2}:\d{2}:\d{2}(?:\.\d+)?\s*[-–—]\s*", "", text)
 
         return text
+
+    def _deduplicate_repeated_lines(self, text: str) -> str:
+        """
+        Collapses pathological repetitive hallucination loops from Whisper or speech recognition.
+        If the exact same content line repeats 3 or more times consecutively, keep at most 2.
+        """
+        lines = text.split("\n")
+        out: list[str] = []
+        consecutive_count = 0
+        last_norm = None
+
+        for line in lines:
+            norm = re.sub(r"^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", line).strip()
+            if norm and norm == last_norm:
+                consecutive_count += 1
+                if consecutive_count < 2:
+                    out.append(line)
+            else:
+                consecutive_count = 0
+                last_norm = norm if norm else None
+                out.append(line)
+
+        return "\n".join(out)
 
     def _normalize_speaker_labels(self, text: str) -> str:
         """

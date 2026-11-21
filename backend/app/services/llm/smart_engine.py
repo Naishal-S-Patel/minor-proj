@@ -45,7 +45,11 @@ STOPWORDS = {
     "while", "who", "who's", "whom", "why", "why's", "with", "won't", "would",
     "wouldn't", "you", "you'd", "you'll", "you're", "you've", "your", "yours",
     "yourself", "yourselves", "um", "uh", "okay", "like", "yeah", "yes", "right",
-    "well", "hello", "hi", "hey", "thanks", "thank", "meeting", "everyone", "today"
+    "well", "hello", "hi", "hey", "thanks", "thank", "meeting", "everyone", "today",
+    # Hindi Stopwords
+    "है", "हैं", "हो", "का", "की", "के", "में", "से", "पर", "और", "तो", "यह", "वह",
+    "था", "थी", "थे", "भी", "ने", "को", "एक", "किया", "गया", "कर", "दिया", "रहा", "रही", "रहे",
+    "aap", "hum", "main", "yeh", "woh", "hai", "hain", "kya", "tha", "thi", "the"
 }
 
 POSITIVE_WORDS = {
@@ -162,12 +166,23 @@ class SmartLocalExtractor:
                 if pid and name and name != pid:
                     speaker_map[pid] = name
                 elif pid and pid not in speaker_map:
-                    # Check self-introductions: "Hi everyone, I'm Sarah" / "My name is Alex Rivera" / "This is Diane"
+                    # Check self-introductions in English, Hindi, and Devanagari
                     intro = re.search(
                         r"\b(?:I'm|I am|this is|my name is|speaking is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
                         text,
                         flags=re.IGNORECASE,
                     )
+                    if not intro:
+                        intro = re.search(
+                            r"(?:मेरा\s+नाम|मैं\s+हूँ|मैं)\s+([\u0900-\u097F]+)(?:\s+हूँ|\s+है|\s+बोल)?",
+                            text,
+                        )
+                    if not intro:
+                        intro = re.search(
+                            r"\b(?:mera\s+naam|mai|main)\s+([A-Z][a-z]+)\b",
+                            text,
+                            flags=re.IGNORECASE,
+                        )
                     if intro:
                         speaker_map[pid] = intro.group(1).strip()
 
@@ -404,12 +419,15 @@ class SmartLocalExtractor:
         seen_keys: set[str] = set()
 
         # 1. Explicit calendar date patterns:
-        # e.g. "25th of November", "25th November", "November 25", "Nov 25", "submit on 25 Nov"
+        # e.g. "25th of November", "25th November", "November 25", "Nov 25", "submit on 25 Nov", "25 नवंबर"
         months_map = {
             "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
             "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
             "aug": 8, "august": 8, "sep": 9, "september": 9, "oct": 10, "october": 10,
             "nov": 11, "november": 11, "dec": 12, "december": 12,
+            # Hindi / Devanagari months
+            "जनवरी": 1, "फ़रवरी": 2, "फरवरी": 2, "मार्च": 3, "अप्रैल": 4, "मई": 5, "जून": 6,
+            "जुलाई": 7, "अगस्त": 8, "सितंबर": 9, "अक्टूबर": 10, "नवंबर": 11, "दिसंबर": 12
         }
         explicit_date_1 = re.compile(
             r"\b(?:on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
@@ -419,9 +437,22 @@ class SmartLocalExtractor:
             r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b",
             re.IGNORECASE,
         )
+        hi_date_1 = re.compile(
+            r"(\d{1,2})\s*(?:तारीख|तारीख़|ko|\s)?\s*(जनवरी|फ़रवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|अक्टूबर|नवंबर|दिसंबर)",
+            re.IGNORECASE,
+        )
+        hi_date_2 = re.compile(
+            r"(जनवरी|फ़रवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|अक्टूबर|नवंबर|दिसंबर)\s*(\d{1,2})",
+            re.IGNORECASE,
+        )
 
         for line in lines:
-            m_exp = explicit_date_1.search(line) or explicit_date_2.search(line)
+            m_exp = (
+                explicit_date_1.search(line)
+                or explicit_date_2.search(line)
+                or hi_date_1.search(line)
+                or hi_date_2.search(line)
+            )
             if m_exp:
                 g1, g2 = m_exp.group(1), m_exp.group(2)
                 if g1.isdigit():
@@ -567,6 +598,40 @@ class SmartLocalExtractor:
                         )
                     )
 
+            # Check Hindi relative days: e.g. "3 दिन बाद"
+            m_hi_days = re.search(r"(\d+)\s*दिन\s*बाद", line)
+            if m_hi_days:
+                days = int(m_hi_days.group(1))
+                key = f"hi_days_{days}"
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    events.append(
+                        LLMCalendarEvent(
+                            title="निर्धारित परीक्षा / कार्यक्रम",
+                            relative_time=f"{days} दिन बाद",
+                            days_from_now=days,
+                            speaker=cls._find_speaker_for_text(line, turns),
+                            context=line,
+                            category="exam",
+                        )
+                    )
+
+            # Check Hindi tomorrow: "कल"
+            if "कल" in line and any(w in line for w in ("परीक्षा", "टेस्ट", "मीटिंग", "सबमिशन", "exam", "test", "quiz", "meeting")):
+                key = "hi_tomorrow_1"
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    events.append(
+                        LLMCalendarEvent(
+                            title="निर्धारित परीक्षा / बैठक (कल)",
+                            relative_time="कल (Tomorrow)",
+                            days_from_now=1,
+                            speaker=cls._find_speaker_for_text(line, turns),
+                            context=line,
+                            category="deadline",
+                        )
+                    )
+
         # Fallback if text mentions "test after 3 days" without exact regex bound
         if not events and re.search(r"test.*after\s+(\d+)\s+days", " ".join(lines), re.IGNORECASE):
             m = re.search(r"test.*after\s+(\d+)\s+days", " ".join(lines), re.IGNORECASE)
@@ -600,7 +665,11 @@ class SmartLocalExtractor:
             "will", "shall", "to do", "assigned to", "responsible for", "needs to",
             "must prepare", "have to complete", "follow up", "work on", "take care of",
             "look into", "send the", "share the", "create", "fix", "update", "deploy",
-            "karega", "karenge", "karegi", "kar dunga", "kar dungi", "submit", "share"
+            "karega", "karenge", "karegi", "kar dunga", "kar dungi", "submit", "share",
+            "karna hai", "karna hoga", "karna padega", "bhejna", "dekhna",
+            # Devanagari Action Keywords
+            "करना है", "करेगा", "करेंगे", "करेगी", "कर देना", "करना पड़ेगा", "सबमिट",
+            "तैयार", "भेजना", "अपडेट", "पढ़ना", "देखना", "पूरा करना", "फाइनल करना", "करना"
         ]
 
         turn_speaker_map = {}
@@ -662,7 +731,9 @@ class SmartLocalExtractor:
         decision_markers = [
             "decided", "agreed", "settled on", "concluded", "approved", "finalized",
             "we will go with", "moving forward with", "consensus", "resolution",
-            "decide kiya", "tay kiya", "faisla"
+            "decide kiya", "tay kiya", "faisla",
+            # Devanagari Decision Markers
+            "तय हुआ", "तय किया", "फैसला", "फाइनल", "अंतिम निर्णय", "निर्णय लिया", "सहमति", "निश्चय"
         ]
 
         for line in lines:
@@ -686,16 +757,16 @@ class SmartLocalExtractor:
 
     @classmethod
     def _extract_keywords(cls, text: str, title: str) -> list[str]:
-        # Tokenize words
-        words = re.findall(r"\b[A-Za-z0-9_\-\.]{3,25}\b", text)
+        # Tokenize English and Devanagari words
+        words = re.findall(r"[\u0900-\u097F]{2,25}|\b[A-Za-z0-9_\-\.]{3,25}\b", text)
         freq: dict[str, int] = {}
 
         # Title words get extra weight
-        title_words = set(re.findall(r"\b[A-Za-z0-9_\-\.]{3,25}\b", title.lower()))
+        title_words = set(re.findall(r"[\u0900-\u097F]{2,25}|\b[A-Za-z0-9_\-\.]{3,25}\b", title.lower()))
 
         for w in words:
-            wl = w.lower()
-            if wl in STOPWORDS or wl.isdigit():
+            wl = w.strip("।॥,.-_!?:;\"'()[]{}").lower()
+            if not wl or wl in STOPWORDS or wl.isdigit() or len(wl) < 2:
                 continue
             # Capitalized words (e.g. proper nouns, tech names) get higher weight
             weight = 3 if w[0].isupper() else 1
@@ -781,7 +852,9 @@ class SmartLocalExtractor:
         if decisions:
             summary_sentences.append(f"Decisions made include: {decisions[0]}.")
         elif len(lines) > 2:
-            summary_sentences.append(f"Major discussion points centered on: {lines[1]}.")
+            clean_pt = re.sub(r"^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", lines[1]).strip()
+            if clean_pt:
+                summary_sentences.append(f"Major discussion points centered on: {clean_pt}.")
 
         # Action items summary
         if actions:

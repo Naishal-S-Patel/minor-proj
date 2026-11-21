@@ -84,12 +84,12 @@ class GeminiClient:
         }
 
         models_to_try = [self._model]
-        for candidate in ("gemini-3.8-flash", "gemini-3.6-flash"):
+        for candidate in ("gemini-4-hydrogen", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
             if candidate not in models_to_try:
                 models_to_try.append(candidate)
 
         loop = asyncio.get_event_loop()
-        per_model_timeout = min(settings.llm_request_timeout_seconds, 15) if len(models_to_try) > 1 else settings.llm_request_timeout_seconds
+        per_model_timeout = min(settings.llm_request_timeout_seconds, 10) if len(models_to_try) > 1 else settings.llm_request_timeout_seconds
         last_exc: Exception | None = None
 
         for model in models_to_try:
@@ -115,7 +115,7 @@ class GeminiClient:
                 err_str = str(exc)
                 logger.warning("Gemini model %s call failed (%s): %s", model, type(exc).__name__, exc)
                 last_exc = exc
-                if any(code in err_str for code in ("503", "404", "UNAVAILABLE", "NOT_FOUND")):
+                if any(code in err_str for code in ("503", "404", "429", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "NOT_FOUND")):
                     continue
                 raise LLMRequestError(f"{type(exc).__name__}: {exc}") from exc
 

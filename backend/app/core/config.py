@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # Supports multiple LLM providers: gemini (free), groq (free), grok (paid)
     llm_provider: str = "gemini"  # "gemini" or "groq" (both free) or "grok" (paid)
     gemini_api_key: str = ""      # Get free key at https://aistudio.google.com/apikey
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-4-hydrogen"
     groq_api_key: str = ""        # Get FREE key at https://console.groq.com/
     groq_model: str = "llama-3.3-70b-versatile"  # Free, fast, excellent quality
     grok_api_key: str = ""        # Get key at https://console.x.ai/ ($5 minimum)
