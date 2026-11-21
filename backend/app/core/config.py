@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     whisper_model: str = "base"      # tiny, base, small, medium, large
     audio_max_size_mb: int = 25      # Max audio file size in MB
     audio_max_duration_seconds: int = 7200  # 2 hours safety cap
-    whisper_beam_size: int = 5       # beam search width (1 = greedy, fastest)
+    whisper_beam_size: int = 1       # beam search width (1 = greedy, fastest)
     # Optional larger model used only for Hindi / Hinglish audio ("small" or
     # "medium" are far more accurate on Hindi than "base"). Empty = whisper_model.
     whisper_hindi_model: str = ""

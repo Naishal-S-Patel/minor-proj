@@ -61,7 +61,7 @@ if which("ffmpeg") is None:
 
 logger = logging.getLogger(__name__)
 
-SINGLE_PASS_MAX_SEC = 120.0   # shorter recordings are transcribed in one pass
+SINGLE_PASS_MAX_SEC = 300.0   # shorter recordings (up to 5 min) are transcribed in one pass
 CHUNK_TARGET_SEC = 90.0
 CHUNK_SEARCH_SEC = 10.0       # look +-10 s around the target for a quiet cut point
 PAUSE_SPLIT_SEC = 0.8         # word gap that may hide a speaker change
@@ -188,7 +188,7 @@ class AudioService:
             "task": "transcribe",
             "word_timestamps": True,
             "verbose": None,
-            "temperature": (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+            "temperature": (0.0, 0.2) if fp16 else 0.0,
             "condition_on_previous_text": False,  # stops runaway repetition loops
             "compression_ratio_threshold": 2.4,
             "logprob_threshold": -1.0,
@@ -197,7 +197,7 @@ class AudioService:
             "fp16": fp16,
             "hallucination_silence_threshold": 2.0,
         }
-        if settings.whisper_beam_size and settings.whisper_beam_size > 1:
+        if fp16 and settings.whisper_beam_size and settings.whisper_beam_size > 1:
             opts["beam_size"] = settings.whisper_beam_size
             opts["best_of"] = settings.whisper_beam_size
         return opts
