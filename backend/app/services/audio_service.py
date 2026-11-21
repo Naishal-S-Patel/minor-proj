@@ -321,7 +321,7 @@ class AudioService:
                 if lang.is_hallucination(text, seg):
                     continue
                 for start, end, piece_text in self._split_segment(seg, offset):
-                    if mode == lang.LANG_HINGLISH:
+                    if (language or "").strip().lower() in ("hinglish", "hi-latn"):
                         piece_text = lang.transliterate_devanagari(piece_text)
                     s_idx, e_idx = int(start * SAMPLE_RATE), int(end * SAMPLE_RATE)
                     audio = samples[max(0, s_idx) : max(s_idx + 1, e_idx)]

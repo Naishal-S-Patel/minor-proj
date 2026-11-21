@@ -80,8 +80,8 @@ _PROMPTS = {
     LANG_EN: "Hello everyone, welcome to the meeting. Let's go through the agenda, decisions and action items.",
     LANG_HI: "नमस्ते सभी, आज की मीटिंग में हम प्रोजेक्ट, डेडलाइन और एक्शन आइटम्स पर चर्चा करेंगे।",
     LANG_HINGLISH: (
-        "Namaste team, aaj ki meeting mein hum project ke baare mein baat karenge. "
-        "Main kal tak report share kar dunga, aur testing Friday tak complete ho jayegi. Theek hai?"
+        "नमस्ते टीम, आज की मीटिंग में हम प्रोजेक्ट, डेडलाइन और जरूरी बातों पर चर्चा करेंगे। "
+        "मैं कल तक रिपोर्ट शेयर kar dunga, और टेस्टिंग पूरी हो जाएगी। ठीक है?"
     ),
 }
 
