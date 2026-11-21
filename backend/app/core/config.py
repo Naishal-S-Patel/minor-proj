@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     # "ecapa" / "mfcc": force one back-end.
     diarization_backend: str = "auto"
     diarization_max_speakers: int = 8
-    diarization_bic_penalty: float = 2.0       # higher = fewer, larger speaker clusters
+    diarization_bic_penalty: float = 2.5       # higher = fewer, larger speaker clusters
     diarization_ecapa_threshold: float = 0.70  # cosine distance; lower = more speakers
     speaker_model_dir: str = "pretrained_models/spkrec-ecapa-voxceleb"
 

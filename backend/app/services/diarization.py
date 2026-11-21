@@ -199,7 +199,7 @@ def cluster_bic(
     stats: list[GaussStats | None],
     num_speakers: int | None = None,
     max_speakers: int = 8,
-    penalty: float = 2.0,
+    penalty: float = 2.5,
     max_initial_clusters: int = 300,
 ) -> list[int]:
     """
