@@ -15,9 +15,10 @@ const PLATFORMS = [
 ];
 
 const LANGUAGES = [
-  { code: "auto", name: "Auto Detect", flag: "🌐" },
+  { code: "auto", name: "Auto Detect (English / Hindi / Hinglish)", flag: "🌐" },
   { code: "en", name: "English", flag: "🇺🇸" },
-  { code: "hi", name: "Hindi (हिन्दी)", flag: "🇮🇳" },
+  { code: "hi", name: "Hindi (हिन्दी, Devanagari script)", flag: "🇮🇳" },
+  { code: "hinglish", name: "Hinglish (Hindi + English, Roman script)", flag: "🇮🇳" },
   { code: "gu", name: "Gujarati (ગુજરાતી)", flag: "🇮🇳" },
   { code: "es", name: "Spanish (Español)", flag: "🇪🇸" },
   { code: "fr", name: "French (Français)", flag: "🇫🇷" },
@@ -44,6 +45,7 @@ export function UploadPage() {
   const [meetingIdCode, setMeetingIdCode] = useState("");
   const [platform, setPlatform] = useState("Zoom");
   const [language, setLanguage] = useState("auto");
+  const [participants, setParticipants] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,8 @@ export function UploadPage() {
         selectedFile,
         meetingIdCode.trim() || undefined,
         platform || undefined,
-        language || undefined
+        language || undefined,
+        participants.trim() || undefined
       );
       setUploadState("success");
       navigate(`/meetings/${meeting.id}`);
@@ -111,6 +114,7 @@ export function UploadPage() {
 
   // Sample presets for quick testing
   const loadPreset = (presetType: "lecture" | "standup" | "hindi") => {
+    setParticipants("");
     if (presetType === "lecture") {
       setTitle("CS402: Distributed Systems Lecture & Exam Prep");
       setMeetingIdCode("842-192-3841");
@@ -385,7 +389,46 @@ Host: Sarah Jenkins
               </select>
             </div>
             <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "0.35rem" }}>
-              Select language or keep "Auto Detect" — Whisper & our local AI engine detect and process multilingual speech accurately.
+              Auto Detect tells English, Hindi and mixed Hinglish apart. Pick Hinglish for code-mixed calls to get
+              Roman-script text ("main kal tak kar dunga").
+            </p>
+          </div>
+
+          {/* Participants roster -> names on Zoom / Meet speaker tags */}
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label
+              htmlFor="participants"
+              style={{
+                display: "block",
+                marginBottom: "0.5rem",
+                fontSize: "0.8125rem",
+                fontWeight: 600,
+                color: "var(--color-text)",
+              }}
+            >
+              Participants <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(Optional, recommended for audio)</span>
+            </label>
+            <textarea
+              id="participants"
+              className="input"
+              value={participants}
+              onChange={(e) => setParticipants(e.target.value)}
+              placeholder={
+                platform === "Google Meet"
+                  ? "P01: Ramesha\nP02: Naishal\n— or just: Ramesha, Naishal (in the order they first speak)"
+                  : platform === "Zoom"
+                  ? "USR-101: Ramesha\nUSR-102: Naishal\n— or just: Ramesha, Naishal (in the order they first speak)"
+                  : "Ramesha, Naishal (in the order they first speak)"
+              }
+              rows={3}
+              maxLength={2000}
+              disabled={isUploading}
+              style={{ resize: "vertical", fontFamily: "inherit" }}
+            />
+            <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "0.35rem" }}>
+              Tells the voice detector how many people to separate and puts real names on the{" "}
+              {platform === "Google Meet" ? "Meet (P01, P02…)" : platform === "Zoom" ? "Zoom (USR-101, USR-102…)" : "speaker"} tags.
+              Self-introductions ("I'm Ramesha", "मेरा नाम … है") and greetings ("Hi Naishal") override the order.
             </p>
           </div>
 

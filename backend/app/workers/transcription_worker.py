@@ -14,6 +14,7 @@ import logging
 from app.models.meeting import MeetingStatus
 from app.repositories.meeting_repository import MeetingRepository
 from app.services.audio_service import AudioService
+from app.services.speaker_identity import detect_platform
 from app.services.transcript_service import TranscriptService
 
 logger = logging.getLogger(__name__)
@@ -27,8 +28,15 @@ async def run_transcription_pipeline(
     audio_service: AudioService,
     transcript_service: TranscriptService,
     language: str | None = None,
+    participants: str | None = None,
 ) -> None:
-    """Full transcription pipeline with progressive line-by-line updates."""
+    """
+    Full transcription pipeline with progressive line-by-line updates.
+
+    `participants` is the optional roster typed at upload ("USR-101: Ramesha",
+    "Ramesha, Naishal", ...). It fixes the number of voices to look for and
+    names them on the matching Zoom / Google Meet tags.
+    """
     try:
         # 1. Mark as transcribing (UI shows "Transcribing…")
         await repo.update_status(meeting_id, MeetingStatus.TRANSCRIBING)
@@ -52,14 +60,11 @@ async def run_transcription_pipeline(
 
         # Detect platform for speaker tag formatting (Zoom USR-xxx / Meet P0x)
         meeting = await repo.get_by_id(meeting_id)
-        meeting_platform = meeting.platform if meeting else None
-        if not meeting_platform or meeting_platform in ("Meeting", "Audio Recording"):
-            fn_lower = (filename or "").lower()
-            t_lower = (meeting.title or "").lower() if meeting else ""
-            if "zoom" in fn_lower or "zoom" in t_lower:
-                meeting_platform = "Zoom"
-            elif "meet" in fn_lower or "meet" in t_lower:
-                meeting_platform = "Google Meet"
+        meeting_platform = detect_platform(
+            meeting.platform if meeting else None,
+            filename,
+            meeting.title if meeting else None,
+        ) or (meeting.platform if meeting else None)
 
         # 2. Progressive transcription on worker thread with acoustic voice diarization
         result = await asyncio.to_thread(
@@ -69,6 +74,7 @@ async def run_transcription_pipeline(
             language,
             handle_segment,
             meeting_platform,
+            participants=participants,
         )
 
         if isinstance(result, tuple):

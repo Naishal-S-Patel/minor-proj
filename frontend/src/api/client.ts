@@ -171,7 +171,8 @@ export const api = {
     file: File,
     meetingIdCode?: string,
     platform?: string,
-    language?: string
+    language?: string,
+    participants?: string
   ) => {
     const form = new FormData();
     form.append("title", title);
@@ -179,6 +180,7 @@ export const api = {
     if (meetingIdCode) form.append("meeting_id_code", meetingIdCode);
     if (platform) form.append("platform", platform);
     if (language) form.append("language", language);
+    if (participants) form.append("participants", participants);
     return request<Meeting>("/meetings", { method: "POST", body: form, headers: {} });
   },
   updateActionItem: (meetingId: string, itemId: string, done: boolean) =>

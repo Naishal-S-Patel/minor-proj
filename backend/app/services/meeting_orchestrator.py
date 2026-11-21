@@ -45,10 +45,12 @@ async def run_audio_pipeline(
     transcript_service: TranscriptService,
     extraction_service: ExtractionService,
     language: str | None = None,
+    participants: str | None = None,
 ) -> None:
     """
     Full pipeline for an audio upload: transcription, then extraction.
-    Supports multi-language transcription and progressive line updates.
+    Supports English / Hindi / Hinglish transcription, progressive line
+    updates, and an optional participant roster for naming voices.
     """
     try:
         await run_transcription_pipeline(
@@ -59,6 +61,7 @@ async def run_audio_pipeline(
             audio_service=audio_service,
             transcript_service=transcript_service,
             language=language,
+            participants=participants,
         )
     except Exception:
         # run_transcription_pipeline already persisted status=FAILED and

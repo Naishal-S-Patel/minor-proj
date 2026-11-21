@@ -26,6 +26,7 @@ from app.services.audio_service import AudioService
 from app.services.file_validation_service import FileValidationService
 from app.services.llm.extraction_service import ExtractionService
 from app.services.meeting_orchestrator import run_audio_pipeline, run_text_pipeline
+from app.services.speaker_identity import detect_platform, parse_participants, roster_header
 from app.services.transcript_service import TranscriptService
 
 logger = logging.getLogger(__name__)
@@ -242,13 +243,17 @@ async def create_meeting(
     meeting_id_code: str | None = Form(None),
     platform: str | None = Form(None),
     language: str | None = Form("auto"),
+    participants: str | None = Form(None, max_length=2000),
     background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     current_user: dict = Depends(get_current_user),
     repo: MeetingRepository = Depends(get_meeting_repository),
 ) -> JSONResponse:
     """
     Upload a .txt / .vtt transcript or audio file to create a new meeting.
-    Supports meeting ID (e.g. Zoom / Meet ID), platform selection, and multi-language transcription.
+    Supports meeting ID (e.g. Zoom / Meet ID), platform selection, English /
+    Hindi / Hinglish transcription, and an optional participant roster
+    ("USR-101: Ramesha", "P02 = Naishal", or "Ramesha, Naishal" in speaking
+    order) used to put real names on Zoom / Google Meet speaker tags.
     """
     ext = os.path.splitext(file.filename or "")[1].lower()
 
@@ -256,6 +261,7 @@ async def create_meeting(
     cleaned_meeting_code = meeting_id_code.strip() if meeting_id_code and meeting_id_code.strip() else None
     detected_platform = platform.strip() if platform and platform.strip() else None
     chosen_lang = language.strip() if language and language.strip() else "auto"
+    roster_text = participants.strip() if participants and participants.strip() else None
 
     if ext in (".txt", ".vtt"):
         raw_text = await _file_validation_svc.validate_and_read_text(file)
@@ -270,13 +276,15 @@ async def create_meeting(
                     detected_platform = "Zoom"
 
         if not detected_platform:
-            fn_lower = (file.filename or "").lower()
-            title_lower = title.lower()
-            text_lower = raw_text.lower()
-            if "zoom" in fn_lower or "zoom" in title_lower or "zoom" in text_lower or "usr-" in text_lower:
-                detected_platform = "Zoom"
-            elif "meet" in fn_lower or "meet" in title_lower or "google meet" in text_lower or "p0" in text_lower:
-                detected_platform = "Google Meet"
+            detected_platform = detect_platform(None, file.filename, title, raw_text)
+
+        # A roster typed at upload is prepended as "Participants:" header lines,
+        # which both the local extractor and the LLM prompt already map onto
+        # the transcript's speaker tags.
+        roster = parse_participants(roster_text)
+        if roster:
+            header = roster_header(roster, detected_platform, cleaned_text)
+            cleaned_text = f"{header}\n\n{cleaned_text}"
 
         meeting = MeetingInDB(
             id="",
@@ -322,12 +330,7 @@ async def create_meeting(
             )
 
         if not detected_platform:
-            fn_lower = (file.filename or "").lower()
-            title_lower = title.lower()
-            if "zoom" in fn_lower or "zoom" in title_lower:
-                detected_platform = "Zoom"
-            elif "meet" in fn_lower or "meet" in title_lower:
-                detected_platform = "Google Meet"
+            detected_platform = detect_platform(None, file.filename, title)
 
         meeting = MeetingInDB(
             id="",
@@ -353,6 +356,7 @@ async def create_meeting(
             transcript_service=_transcript_svc,
             extraction_service=extraction_service,
             language=chosen_lang,
+            participants=roster_text,
         )
 
         return JSONResponse(
