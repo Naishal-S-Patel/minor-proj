@@ -42,3 +42,7 @@ docker-compose.override.yml
 
 # --- Models cache ---
 backend/models/
+
+# --- Speaker-embedding model cache (optional speechbrain ECAPA) ---
+backend/pretrained_models/
+pretrained_models/

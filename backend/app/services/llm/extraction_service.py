@@ -21,6 +21,9 @@ from app.services.llm.groq_client import GroqClient, LLMRequestError as GroqRequ
 from app.services.llm.prompts import build_extraction_prompt
 from app.services.llm.schemas import ExtractionResult
 from app.services.llm.smart_engine import SmartLocalExtractor
+from app.services.speaker_identity import detect_platform
+from app.services.speaker_identity import is_meet as is_meet_platform
+from app.services.speaker_identity import is_zoom as is_zoom_platform
 
 logger = logging.getLogger(__name__)
 
@@ -157,23 +160,9 @@ class ExtractionService:
         platform: str = "",
     ) -> None:
         """Assigns Zoom (USR-xxx) or Google Meet (P0x) tag IDs if meeting is on that platform."""
-        platform_lower = (platform or "").lower()
-        title_lower = (meeting_title or "").lower()
-        transcript_lower = cleaned_transcript.lower()
-
-        is_zoom = bool(
-            "zoom" in platform_lower
-            or "zoom" in title_lower
-            or "zoom" in transcript_lower
-            or "usr-" in transcript_lower
-        )
-        is_google_meet = bool(
-            "meet" in platform_lower
-            or "google meet" in title_lower
-            or "google meet" in transcript_lower
-            or "meet.google" in transcript_lower
-            or "p0" in transcript_lower
-        )
+        detected = detect_platform(platform, None, meeting_title, cleaned_transcript)
+        is_zoom = is_zoom_platform(detected)
+        is_google_meet = is_meet_platform(detected) and not is_zoom
 
         if not (is_zoom or is_google_meet):
             return

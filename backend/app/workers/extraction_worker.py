@@ -34,6 +34,7 @@ import uuid
 from app.models.meeting import ActionItem, CalendarEvent, DialogueTurn, MeetingStatus
 from app.repositories.meeting_repository import MeetingRepository
 from app.services.llm.extraction_service import ExtractionFailedError, ExtractionService
+from app.services.speaker_identity import detect_platform
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +66,12 @@ async def run_extraction_pipeline(
         # 2. Call the LLM extraction service with meeting platform & title context
         meeting = await repo.get_by_id(meeting_id)
         meeting_title = meeting.title if meeting else ""
-        meeting_platform = meeting.platform if meeting else ""
-        if not meeting_platform or meeting_platform in ("Meeting", "Audio Recording"):
-            if "zoom" in meeting_title.lower() or "zoom" in cleaned_transcript.lower() or "usr-" in cleaned_transcript.lower():
-                meeting_platform = "Zoom"
-            elif "meet" in meeting_title.lower() or "meet" in cleaned_transcript.lower() or "p0" in cleaned_transcript.lower():
-                meeting_platform = "Google Meet"
+        meeting_platform = detect_platform(
+            meeting.platform if meeting else None,
+            None,
+            meeting_title,
+            cleaned_transcript,
+        ) or (meeting.platform if meeting else "") or ""
 
         result = await extraction_service.extract(
             cleaned_transcript,

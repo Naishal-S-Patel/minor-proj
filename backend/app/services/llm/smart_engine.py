@@ -15,12 +15,14 @@ import re
 from typing import Any
 
 from app.models.meeting import ActionItem, CalendarEvent, Sentiment
+from app.services.language_support import detect_text_language
 from app.services.llm.schemas import (
     ExtractionResult,
     LLMActionItem,
     LLMCalendarEvent,
     LLMDialogueTurn,
 )
+from app.services.speaker_identity import detect_platform, is_meet, is_zoom, resolve_speaker_names
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,105 @@ NEGATIVE_WORDS = {
     "urgent", "bottleneck", "disagree", "impossible", "negative", "terrible", "bad"
 }
 
+# --- Hindi / Hinglish vocabulary -------------------------------------------
+
+HINDI_STOPWORDS = {
+    # Devanagari
+    "है", "हैं", "था", "थे", "थी", "का", "की", "के", "को", "में", "से", "पर", "और", "या",
+    "यह", "वह", "ये", "वो", "हम", "मैं", "आप", "तुम", "तो", "भी", "ही", "कि", "जो", "ना",
+    "नहीं", "क्या", "एक", "लिए", "कर", "करना", "करेंगे", "हो", "रहा", "रही", "रहे", "गया",
+    "गई", "गए", "हाँ", "हां", "जी", "अच्छा", "ठीक", "बस", "अभी", "कुछ", "सब", "अपना", "अपने",
+    "इस", "उस", "इसे", "उसे", "मुझे", "हमें", "होगा", "होगी", "कल", "आज", "फिर", "बहुत",
+    # Romanised (Hinglish)
+    "hai", "hain", "tha", "thi", "the", "ka", "ki", "ke", "ko", "mein", "se", "par", "aur",
+    "yeh", "ye", "woh", "wo", "hum", "main", "aap", "tum", "toh", "bhi", "jo", "na", "nahi",
+    "nahin", "kya", "ek", "liye", "kar", "karna", "karenge", "karega", "karegi", "ho", "raha",
+    "rahi", "rahe", "gaya", "gayi", "haan", "ji", "accha", "acha", "theek", "thik", "bas",
+    "abhi", "kuch", "sab", "apna", "apne", "mujhe", "humein", "hoga", "hogi", "kal", "aaj",
+    "phir", "bahut", "bohot", "matlab", "lekin", "dunga", "dungi", "diya", "kiya", "wala", "wali",
+    "tak", "din", "baad", "badhiya", "तक", "दिन", "बाद", "दूंगा", "दूंगी", "भेज", "तीन",
+}
+
+HINDI_POSITIVE_WORDS = {
+    "अच्छा", "बढ़िया", "बढ़िया", "शानदार", "बेहतरीन", "सही", "सफल", "पूरा", "धन्यवाद", "खुश",
+    "badhiya", "shandar", "behtareen", "sahi", "safal", "khush", "mast", "zabardast", "perfect",
+}
+
+HINDI_NEGATIVE_WORDS = {
+    "समस्या", "दिक्कत", "गलती", "देरी", "परेशानी", "मुश्किल", "खराब", "रुका", "चिंता",
+    "dikkat", "galti", "deri", "pareshani", "mushkil", "kharab", "ruka", "chinta", "samasya",
+}
+
+HINDI_ACTION_MARKERS = [
+    "करूँगा", "करूंगा", "करूँगी", "करूंगी", "करेगा", "करेगी", "करेंगे", "करना है", "करना होगा",
+    "कर दूंगा", "कर दूँगा", "कर दूंगी", "भेज दूंगा", "भेज दूंगी", "शेयर", "सबमिट", "जमा कर",
+    "तैयार कर", "पूरा कर", "देख लूंगा", "देख लेंगे", "तक कर",
+    "kar dunga", "kar dungi", "kar denge", "karna hai", "karna hoga", "karunga", "karungi",
+    "bhej dunga", "bhej dungi", "bhej denge", "share kar", "submit kar", "complete kar",
+    "ready kar", "taiyar kar", "dekh lunga", "dekh lenge", "tak kar", "kar lunga", "kar lenge",
+]
+
+HINDI_DECISION_MARKERS = [
+    "तय किया", "तय हुआ", "फैसला", "निर्णय", "फाइनल किया", "मंजूरी",
+    "decide kiya", "tay kiya", "tay hua", "faisla", "final kiya", "finalize kiya", "manzoori",
+]
+
+HINDI_DEADLINE_RE = re.compile(
+    r"(\b\w+\s+tak\b|\S+ तक|agle hafte|अगले हफ्ते|"
+    r"\d+\s*(?:din|दिन)\s*(?:mein|me|में|baad|bad|बाद))",
+    re.IGNORECASE,
+)
+
+_HI_EVENT_RE = re.compile(
+    r"(test|exam|quiz|submission|demo|presentation|review|meeting|deadline|"
+    r"टेस्ट|परीक्षा|इम्तिहान|क्विज़|क्विज|मीटिंग|डेमो|सबमिशन|डेडलाइन|प्रेजेंटेशन|रिव्यू)",
+    re.IGNORECASE,
+)
+_HI_EVENT_TITLES = {
+    "टेस्ट": "Test", "परीक्षा": "Exam", "इम्तिहान": "Exam", "क्विज़": "Quiz", "क्विज": "Quiz",
+    "मीटिंग": "Meeting", "डेमो": "Demo", "सबमिशन": "Submission", "डेडलाइन": "Deadline",
+    "प्रेजेंटेशन": "Presentation", "रिव्यू": "Review",
+}
+_HI_N_DAYS_RE = re.compile(r"(\d+)\s*(?:din|dino|dinon|दिन|दिनों)\s*(?:baad|bad|mein|me|में|बाद)", re.IGNORECASE)
+_NO_DEVA_BEFORE = r"(?<![ऀ-ॿ])"
+_NO_DEVA_AFTER = r"(?![ऀ-ॿ])"
+_HI_RELATIVE_WORDS = [
+    (re.compile(rf"\b(?:parso|parson)\b|{_NO_DEVA_BEFORE}परसों{_NO_DEVA_AFTER}", re.IGNORECASE), 2),
+    (re.compile(r"\bagle\s+(?:hafte|week|saptah)\b|अगले\s+(?:हफ्ते|हफ़्ते|सप्ताह)", re.IGNORECASE), 7),
+    (re.compile(r"\bagle\s+mahine\b|अगले\s+महीने", re.IGNORECASE), 30),
+    (re.compile(rf"\bkal\b|{_NO_DEVA_BEFORE}कल{_NO_DEVA_AFTER}", re.IGNORECASE), 1),
+]
+
+_DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+_NUMBER_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9, "ten": 10, "fourteen": 14, "fifteen": 15, "twenty": 20, "thirty": 30,
+    "ek": 1, "do": 2, "teen": 3, "char": 4, "chaar": 4, "paanch": 5, "panch": 5, "chhe": 6,
+    "che": 6, "saat": 7, "aath": 8, "nau": 9, "das": 10,
+    "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पांच": 5, "पाँच": 5, "छह": 6, "छः": 6, "सात": 7,
+    "आठ": 8, "नौ": 9, "दस": 10,
+}
+# Only rewrite number words directly before a time unit ("three days", "do din").
+_NUMBER_WORD_RE = re.compile(
+    r"(?<![\wऀ-ॿ])(" + "|".join(sorted(map(re.escape, _NUMBER_WORDS), key=len, reverse=True)) + r")"
+    r"\s+(days?|weeks?|din|dino|dinon|hafte|दिन|दिनों|हफ्ते)",
+    re.IGNORECASE,
+)
+
+# Latin + Devanagari word tokens (the Devanagari danda "।" / "॥" is punctuation, not a letter).
+_WORD_TOKEN_RE = re.compile(
+    r"[A-Za-zऀ-ॣ०-ॿ][A-Za-z0-9ऀ-ॣ०-ॿ_\-\.]{2,24}"
+)
+
+# Conversational filler that is never a meeting topic.
+FILLER_WORDS = {
+    "sure", "great", "let", "lets", "begin", "start", "started", "participants", "namaste",
+    "alright", "good", "morning", "afternoon", "evening", "joining", "awesome", "perfect",
+    "nice", "cool", "fine", "also", "just", "really", "going", "want", "need", "get", "got",
+    "can", "will", "think", "know", "see", "said", "say", "one", "two", "three",
+    "नमस्ते", "मेरा", "नाम", "सभी", "बढ़िया", "धन्यवाद",
+}
+
 
 class SmartLocalExtractor:
     """Extracts meeting insights with zero external API calls."""
@@ -83,8 +184,8 @@ class SmartLocalExtractor:
         """
         label = raw_label.strip()
 
-        # Pattern 1: ID (Name) e.g. USR-101 (Sarah Chen) or P01 (Sarah Chen)
-        m1 = re.match(r"^([A-Za-z]+[-_]?\d+|\d{4,})\s*\(([^)]+)\)$", label)
+        # Pattern 1: ID (Name) e.g. USR-101 (Sarah Chen), P01 (Sarah Chen), Speaker 2 (Ramesha)
+        m1 = re.match(r"^([A-Za-z]+[-_]?\d+|Speaker\s+\d+|\d{4,})\s*\(([^)]+)\)$", label, re.IGNORECASE)
         if m1:
             return m1.group(1).strip(), m1.group(2).strip()
 
@@ -129,12 +230,12 @@ class SmartLocalExtractor:
         )
 
         turn_pattern = re.compile(
-            r"^(?:\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*)?(?:\[?([^:\[\]]+?)\]?):\s*(.+)$"
+            r"^(?:\[?(\d{1,3}:\d{2}(?::\d{2})?)\]?\s*)?(?:\[?([^:\[\]]+?)\]?):\s*(.+)$"
         )
 
         for line in lines:
             # Skip obvious dialogue turns with timestamps when checking roster_arrow
-            if not re.match(r"^\[?\d{1,2}:\d{2}", line):
+            if not re.match(r"^\[?\d{1,3}:\d{2}", line):
                 m_paren = roster_paren.match(line)
                 if m_paren:
                     name, pid = m_paren.group(1).strip(), m_paren.group(2).strip()
@@ -150,58 +251,46 @@ class SmartLocalExtractor:
                         speaker_map[pid] = candidate_name
                         continue
 
-            # 2. Inline labels & self-introductions in dialogue turns
+            # 2. Inline labels in dialogue turns, e.g. "[USR-101 (Ramesha)]:"
             m_turn = turn_pattern.match(line)
             if m_turn:
                 raw_label = m_turn.group(2).strip()
-                text = m_turn.group(3).strip()
                 if len(raw_label) > 50 or raw_label.lower() in cls._HEADER_IGNORE:
                     continue
 
                 pid, name = cls._split_inline_id_and_name(raw_label)
                 if pid and name and name != pid:
                     speaker_map[pid] = name
-                elif pid and pid not in speaker_map:
-                    # Check self-introductions: "Hi everyone, I'm Sarah" / "My name is Alex Rivera" / "This is Diane"
-                    intro = re.search(
-                        r"\b(?:I'm|I am|this is|my name is|speaking is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
-                        text,
-                        flags=re.IGNORECASE,
-                    )
-                    if intro:
-                        speaker_map[pid] = intro.group(1).strip()
 
-        # 3. Associate conversational partners from direct addresses or handoffs
-        # e.g., "So hello, Nishal" spoken by USR-101 -> the other speaker USR-102 is Nishal!
-        if len(speaker_map) < 10:
-            for line in lines:
-                m_turn = turn_pattern.match(line)
-                if not m_turn:
-                    continue
-                raw_label = m_turn.group(2).strip()
-                text = m_turn.group(3).strip()
-                pid, _ = cls._split_inline_id_and_name(raw_label)
-                if not pid:
-                    continue
+        # 3. Still-anonymous IDs: use self-introductions ("I'm Sarah",
+        #    "मेरा नाम रमेशा है", "main Naishal hoon") and who is being greeted or
+        #    thanked — "Hi Naishal" names the NEXT different speaker, "Thanks
+        #    Ramesha" the PREVIOUS one (not just "any other speaker").
+        id_turns: list[tuple[str, str]] = []
+        for line in lines:
+            m_turn = turn_pattern.match(line)
+            if not m_turn:
+                continue
+            raw_label = m_turn.group(2).strip()
+            if len(raw_label) > 50 or raw_label.lower() in cls._HEADER_IGNORE:
+                continue
+            pid, _ = cls._split_inline_id_and_name(raw_label)
+            if pid:
+                id_turns.append((pid, m_turn.group(3).strip()))
 
-                greet_match = re.search(
-                    r"\b(?:hello|hi|hey|thanks|thank you|assignment to|over to)\s*,?\s+([A-Z][a-z]+)\b",
-                    text,
-                    flags=re.IGNORECASE,
-                )
-                if greet_match:
-                    addressed_name = greet_match.group(1).strip()
-                    if addressed_name.lower() in ("everyone", "guys", "bro", "all", "sir", "maam", "team", "there"):
-                        continue
-                    if pid in speaker_map and speaker_map[pid].lower() == addressed_name.lower():
-                        continue
-                    for other_line in lines:
-                        m_other = turn_pattern.match(other_line)
-                        if m_other:
-                            other_pid, _ = cls._split_inline_id_and_name(m_other.group(2).strip())
-                            if other_pid and other_pid != pid and (other_pid not in speaker_map or speaker_map[other_pid] == other_pid):
-                                speaker_map[other_pid] = addressed_name
-                                break
+        anonymous = [p for p in dict.fromkeys(p for p, _ in id_turns) if p not in speaker_map]
+        if anonymous:
+            ids = list(dict.fromkeys(p for p, _ in id_turns))
+            index_of = {p: i for i, p in enumerate(ids)}
+            resolved = resolve_speaker_names(
+                [(index_of[p], t) for p, t in id_turns], roster=[], platform=None
+            )
+            taken = {n.lower() for n in speaker_map.values()}
+            for idx, name in resolved.items():
+                pid = ids[idx]
+                if pid in anonymous and name.lower() not in taken:
+                    speaker_map[pid] = name
+                    taken.add(name.lower())
 
         return speaker_map
 
@@ -239,7 +328,7 @@ class SmartLocalExtractor:
         # Regex patterns for dialogue lines:
         # e.g. [00:12] [USR-101]: text, [00:12] [Speaker 1]: text, Alex: text, P01 (Sarah): text
         turn_pattern = re.compile(
-            r"^(?:\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*)?(?:\[?([^:\[\]]+?)\]?):\s*(.+)$"
+            r"^(?:\[?(\d{1,3}:\d{2}(?::\d{2})?)\]?\s*)?(?:\[?([^:\[\]]+?)\]?):\s*(.+)$"
         )
 
         # Roster lines that shouldn't be treated as spoken dialogue turns
@@ -250,7 +339,7 @@ class SmartLocalExtractor:
 
         for line in lines:
             # Skip explicit roster mapping lines from dialogue turns
-            if not re.match(r"^\[?\d{1,2}:\d{2}", line):
+            if not re.match(r"^\[?\d{1,3}:\d{2}", line):
                 m_roster = roster_line_re.match(line)
                 if m_roster and len(m_roster.group(2).split()) <= 4 and all(w[0].isupper() for w in m_roster.group(2).split() if w):
                     continue
@@ -287,28 +376,14 @@ class SmartLocalExtractor:
                 )
 
         # Detect if meeting is Zoom or Google Meet
-        platform_lower = (platform or "").lower()
-        title_lower = (meeting_title or "").lower()
-        transcript_lower = cleaned_transcript.lower()
-
-        is_zoom = bool(
-            "zoom" in platform_lower
-            or "zoom" in title_lower
-            or "zoom" in transcript_lower
-            or "usr-" in transcript_lower
-        )
-        is_google_meet = bool(
-            "meet" in platform_lower
-            or "google meet" in title_lower
-            or "google meet" in transcript_lower
-            or "meet.google" in transcript_lower
-            or bool(re.search(r"\bP0\d\b", cleaned_transcript))
-        )
+        detected_platform = detect_platform(platform, None, meeting_title, cleaned_transcript)
+        is_zoom_mtg = is_zoom(detected_platform)
+        is_google_meet = is_meet(detected_platform) and not is_zoom_mtg
 
         # Ensure Zoom (USR-xxx) or Google Meet (P0x) tag IDs are assigned to every participant
-        if is_zoom or is_google_meet:
-            prefix = "USR-" if is_zoom else "P"
-            start_num = 101 if is_zoom else 1
+        if is_zoom_mtg or is_google_meet:
+            prefix = "USR-" if is_zoom_mtg else "P"
+            start_num = 101 if is_zoom_mtg else 1
             allocated_tags = set(speaker_map.keys())
             tag_counter = start_num
 
@@ -331,7 +406,7 @@ class SmartLocalExtractor:
                     continue
                 # Allocate next available tag ID
                 while True:
-                    candidate = f"{prefix}{tag_counter}" if is_zoom else f"{prefix}{tag_counter:02d}"
+                    candidate = f"{prefix}{tag_counter}" if is_zoom_mtg else f"{prefix}{tag_counter:02d}"
                     if candidate not in allocated_tags:
                         tag_id = candidate
                         allocated_tags.add(tag_id)
@@ -370,7 +445,9 @@ class SmartLocalExtractor:
         decisions = cls._extract_decisions(lines)
 
         # 5. Extract Keywords
-        keywords = cls._extract_keywords(cleaned_transcript, meeting_title)
+        keywords = cls._extract_keywords(
+            cleaned_transcript, meeting_title, names=list(speaker_map.values()) + speakers
+        )
 
         # 6. Sentiment
         sentiment = cls._analyze_sentiment(cleaned_transcript)
@@ -488,7 +565,8 @@ class SmartLocalExtractor:
             re.IGNORECASE,
         )
 
-        for line in lines:
+        for raw_line in lines:
+            line = cls._normalize_numbers(raw_line)
             # Check rel_days_pattern
             for match in rel_days_pattern.finditer(line):
                 event_name = match.group(1).title()
@@ -504,8 +582,8 @@ class SmartLocalExtractor:
                             title=f"{event_name} Scheduled",
                             relative_time=phrase,
                             days_from_now=days,
-                            speaker=cls._find_speaker_for_text(line, turns),
-                            context=line,
+                            speaker=cls._find_speaker_for_text(raw_line, turns),
+                            context=raw_line,
                             category=category,
                         )
                     )
@@ -525,8 +603,8 @@ class SmartLocalExtractor:
                             title=f"{event_name} Scheduled",
                             relative_time=phrase,
                             days_from_now=days,
-                            speaker=cls._find_speaker_for_text(line, turns),
-                            context=line,
+                            speaker=cls._find_speaker_for_text(raw_line, turns),
+                            context=raw_line,
                             category=category,
                         )
                     )
@@ -542,8 +620,8 @@ class SmartLocalExtractor:
                             title=f"{event_name} (Tomorrow)",
                             relative_time="tomorrow",
                             days_from_now=1,
-                            speaker=cls._find_speaker_for_text(line, turns),
-                            context=line,
+                            speaker=cls._find_speaker_for_text(raw_line, turns),
+                            context=raw_line,
                             category="deadline",
                         )
                     )
@@ -561,11 +639,49 @@ class SmartLocalExtractor:
                             title=f"{event_name} (Next {day_name})",
                             relative_time=f"next {day_name}",
                             days_from_now=days,
-                            speaker=cls._find_speaker_for_text(line, turns),
-                            context=line,
+                            speaker=cls._find_speaker_for_text(raw_line, turns),
+                            context=raw_line,
                             category="meeting",
                         )
                     )
+
+        # 3. Hindi / Hinglish relative dates:
+        #    "test 3 din baad hai", "टेस्ट 3 दिन बाद है", "परसों demo", "agle hafte meeting"
+        for raw_line in lines:
+            line = cls._normalize_numbers(raw_line)
+            ev_match = _HI_EVENT_RE.search(line)
+            if not ev_match:
+                continue
+            event_name = _HI_EVENT_TITLES.get(ev_match.group(1).lower(), ev_match.group(1).title())
+            days = phrase = None
+            m_days = _HI_N_DAYS_RE.search(line)
+            if m_days:
+                days, phrase = int(m_days.group(1)), m_days.group(0)
+            else:
+                for rel_re, rel_days in _HI_RELATIVE_WORDS:
+                    m_rel = rel_re.search(line)
+                    if m_rel:
+                        days, phrase = rel_days, m_rel.group(0)
+                        break
+            if days is None:
+                continue
+            key = f"{event_name}_{days}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            category = "exam" if event_name.lower() in ("test", "exam", "quiz") else (
+                "meeting" if event_name.lower() in ("meeting", "review", "presentation", "demo") else "deadline"
+            )
+            events.append(
+                LLMCalendarEvent(
+                    title=f"{event_name} Scheduled",
+                    relative_time=phrase,
+                    days_from_now=days,
+                    speaker=cls._find_speaker_for_text(raw_line, turns),
+                    context=raw_line,
+                    category=category,
+                )
+            )
 
         # Fallback if text mentions "test after 3 days" without exact regex bound
         if not events and re.search(r"test.*after\s+(\d+)\s+days", " ".join(lines), re.IGNORECASE):
@@ -584,6 +700,12 @@ class SmartLocalExtractor:
 
         return events
 
+    @staticmethod
+    def _normalize_numbers(line: str) -> str:
+        """'three days' / 'teen din' / 'तीन दिन' / '३ दिन' -> '3 days' / '3 din' / '3 दिन'."""
+        line = line.translate(_DEVANAGARI_DIGITS)
+        return _NUMBER_WORD_RE.sub(lambda m: f"{_NUMBER_WORDS[m.group(1).lower()]} {m.group(2)}", line)
+
     @classmethod
     def _find_speaker_for_text(cls, line: str, turns: list[LLMDialogueTurn]) -> str | None:
         for turn in turns:
@@ -596,29 +718,32 @@ class SmartLocalExtractor:
         cls, lines: list[str], turns: list[LLMDialogueTurn]
     ) -> list[LLMActionItem]:
         action_items: list[LLMActionItem] = []
-        action_keywords = [
-            "will", "shall", "to do", "assigned to", "responsible for", "needs to",
-            "must prepare", "have to complete", "follow up", "work on", "take care of",
-            "look into", "send the", "share the", "create", "fix", "update", "deploy",
-            "karega", "karenge", "karegi", "kar dunga", "kar dungi", "submit", "share"
-        ]
-
-        turn_speaker_map = {}
-        for turn in turns:
-            turn_speaker_map[turn.text.strip()] = turn.speaker
+        # English keywords match on word boundaries ("fix" must not fire on
+        # "prefix", "will" not on "willing"); Hindi/Hinglish markers match as
+        # phrases because Devanagari has no reliable \b word boundaries in `re`.
+        english_action_re = re.compile(
+            r"\b(?:will|shall|to do|assigned to|responsible for|needs? to|must prepare|"
+            r"have to complete|follow up|work on|take care of|look into|send the|share the|"
+            r"create|fix|update|deploy|submit|share|karega|karenge|karegi)\b",
+            re.IGNORECASE,
+        )
 
         for line in lines:
             line_lower = line.lower()
-            if any(kw in line_lower for kw in action_keywords):
+            if line.startswith(("- ", "* ", "• ")) and "->" in line:
+                continue  # roster line, not speech
+            if english_action_re.search(line) or any(m in line_lower for m in HINDI_ACTION_MARKERS):
                 # Clean up speaker/timestamp prefix if present
-                clean_line = re.sub(r"^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", line).strip()
+                clean_line = re.sub(r"^(?:\[?\d{1,3}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", line).strip()
                 if len(clean_line) < 10:
                     continue
 
                 # Determine person
                 speaker = cls._find_speaker_for_text(line, turns) or "Team"
                 NON_PERSON_WORDS = {"there", "here", "it", "this", "that", "we", "you", "they", "someone", "please", "remember", "note", "today", "tomorrow", "also", "just", "now"}
-                name_match = re.search(r"\b([A-Z][a-z]+)\s+(?:will|should|to|must)\b", clean_line)
+                name_match = re.search(
+                    r"\b([A-Z][a-z]+)\s+(?:will|should|to|must|karega|karegi|karenge)\b", clean_line
+                )
                 if name_match and name_match.group(1).lower() not in NON_PERSON_WORDS:
                     person = name_match.group(1)
                 else:
@@ -633,6 +758,10 @@ class SmartLocalExtractor:
                 )
                 if deadline_match:
                     deadline = deadline_match.group(1)
+                else:
+                    hi_deadline = HINDI_DEADLINE_RE.search(cls._normalize_numbers(clean_line))
+                    if hi_deadline:
+                        deadline = hi_deadline.group(1)
 
                 task = clean_line
                 if len(task) > 200:
@@ -662,13 +791,13 @@ class SmartLocalExtractor:
         decision_markers = [
             "decided", "agreed", "settled on", "concluded", "approved", "finalized",
             "we will go with", "moving forward with", "consensus", "resolution",
-            "decide kiya", "tay kiya", "faisla"
+            *HINDI_DECISION_MARKERS,
         ]
 
         for line in lines:
             line_lower = line.lower()
             if any(marker in line_lower for marker in decision_markers):
-                clean_line = re.sub(r"^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", line).strip()
+                clean_line = re.sub(r"^(?:\[?\d{1,3}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", line).strip()
                 if clean_line and clean_line not in decisions:
                     decisions.append(clean_line)
                     if len(decisions) >= 5:
@@ -677,7 +806,7 @@ class SmartLocalExtractor:
         if not decisions:
             # Extract first high-confidence declarative statement
             for line in lines:
-                clean_line = re.sub(r"^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", line).strip()
+                clean_line = re.sub(r"^(?:\[?\d{1,3}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", line).strip()
                 if len(clean_line) > 20 and not clean_line.endswith("?"):
                     decisions.append(clean_line)
                     break
@@ -685,18 +814,29 @@ class SmartLocalExtractor:
         return decisions[:5]
 
     @classmethod
-    def _extract_keywords(cls, text: str, title: str) -> list[str]:
-        # Tokenize words
-        words = re.findall(r"\b[A-Za-z0-9_\-\.]{3,25}\b", text)
+    def _extract_keywords(cls, text: str, title: str, names: list[str] | None = None) -> list[str]:
+        # Participant names are people, not topics.
+        exclude = {part.lower() for n in (names or []) for part in n.split()}
+        # Tokenize words (Latin + Devanagari; Python's \w misses Hindi vowel signs)
+        words = [w.strip(".-") for w in _WORD_TOKEN_RE.findall(text)]
         freq: dict[str, int] = {}
 
         # Title words get extra weight
-        title_words = set(re.findall(r"\b[A-Za-z0-9_\-\.]{3,25}\b", title.lower()))
+        title_words = {w.strip(".-").lower() for w in _WORD_TOKEN_RE.findall(title)}
 
         for w in words:
             wl = w.lower()
-            if wl in STOPWORDS or wl.isdigit():
+            if (
+                len(wl) < 3
+                or wl in STOPWORDS
+                or wl in HINDI_STOPWORDS
+                or wl in FILLER_WORDS
+                or wl in exclude
+                or wl.isdigit()
+            ):
                 continue
+            if re.fullmatch(r"(?:usr-?\d+|p\d{2}|speaker)", wl):
+                continue  # speaker tags are not topics
             # Capitalized words (e.g. proper nouns, tech names) get higher weight
             weight = 3 if w[0].isupper() else 1
             if wl in title_words:
@@ -715,9 +855,12 @@ class SmartLocalExtractor:
 
     @classmethod
     def _analyze_sentiment(cls, text: str) -> Sentiment:
-        text_lower = text.lower()
-        pos_count = sum(1 for w in POSITIVE_WORDS if w in text_lower)
-        neg_count = sum(1 for w in NEGATIVE_WORDS if w in text_lower)
+        # Count whole tokens — substring matching made "badhiya" (great!) count as "bad".
+        tokens = [t.lower().strip(".-") for t in _WORD_TOKEN_RE.findall(text)]
+        positive = POSITIVE_WORDS | HINDI_POSITIVE_WORDS
+        negative = NEGATIVE_WORDS | HINDI_NEGATIVE_WORDS
+        pos_count = sum(1 for t in tokens if t in positive)
+        neg_count = sum(1 for t in tokens if t in negative)
 
         if pos_count > neg_count + 1:
             return "positive"
@@ -727,22 +870,8 @@ class SmartLocalExtractor:
 
     @classmethod
     def _detect_language(cls, text: str) -> str:
-        # Check Devanagari script for Hindi/Gujarati/Marathi/Sanskrit
-        if re.search(r"[\u0900-\u097F]", text):
-            return "hi"
-        # Check Gujarati script
-        if re.search(r"[\u0A80-\u0AFF]", text):
-            return "gu"
-        # Check Spanish markers (ñ, ¿, ¡, á, é, í, ó, ú)
-        if re.search(r"[¿¡áéíóúñÁÉÍÓÚÑ]", text):
-            return "es"
-        # Check French markers (ç, è, é, à, ù, œ)
-        if re.search(r"[œçèéàùêîôâ]", text):
-            return "fr"
-        # Check German markers (ä, ö, ü, ß)
-        if re.search(r"[äöüßÄÖÜ]", text):
-            return "de"
-        return "en"
+        """Script- and romanised-Hindi-aware detection ("hi" covers Hindi and Hinglish)."""
+        return detect_text_language(text)
 
     @classmethod
     def _generate_summary(

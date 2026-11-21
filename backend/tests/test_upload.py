@@ -137,3 +137,19 @@ def test_upload_transcript_cleaned(client, fake_repo):
     assert "[00:01:23]" not in body["cleaned_transcript"]
     assert "SPEAKER_00" not in body["cleaned_transcript"]
     assert "Hello world" in body["cleaned_transcript"]
+
+
+def test_upload_txt_with_participant_roster(client, fake_repo):
+    """A roster typed at upload is prepended as tag -> name lines for extraction."""
+    transcript = "[00:01] [P01]: Let's begin the sync.\n[00:05] [P02]: I will share the deck tomorrow.\n"
+    response = client.post(
+        "/meetings",
+        data={"title": "Design sync", "platform": "Google Meet", "participants": "Ramesha, Naishal"},
+        files={"file": ("sync.txt", io.BytesIO(transcript.encode("utf-8")), "text/plain")},
+    )
+    assert response.status_code == 202
+    meeting = list(fake_repo._meetings.values())[0]
+    assert meeting.cleaned_transcript.startswith(
+        "Participants:\n- P01 -> Ramesha\n- P02 -> Naishal\n\n"
+    )
+    assert meeting.raw_transcript == transcript  # original upload kept untouched

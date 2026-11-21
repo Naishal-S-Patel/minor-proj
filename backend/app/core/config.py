@@ -61,6 +61,20 @@ class Settings(BaseSettings):
     whisper_model: str = "base"      # tiny, base, small, medium, large
     audio_max_size_mb: int = 25      # Max audio file size in MB
     audio_max_duration_seconds: int = 7200  # 2 hours safety cap
+    whisper_beam_size: int = 5       # beam search width (1 = greedy, fastest)
+    # Optional larger model used only for Hindi / Hinglish audio ("small" or
+    # "medium" are far more accurate on Hindi than "base"). Empty = whisper_model.
+    whisper_hindi_model: str = ""
+
+    # --- Speaker diarization ---
+    # "auto": ECAPA neural voice embeddings if `speechbrain` is installed,
+    #         otherwise MFCC + BIC clustering (numpy only).
+    # "ecapa" / "mfcc": force one back-end.
+    diarization_backend: str = "auto"
+    diarization_max_speakers: int = 8
+    diarization_bic_penalty: float = 2.0       # higher = fewer, larger speaker clusters
+    diarization_ecapa_threshold: float = 0.70  # cosine distance; lower = more speakers
+    speaker_model_dir: str = "pretrained_models/spkrec-ecapa-voxceleb"
 
     # --- LLM Extraction (Phase 3) ---
     # Supports multiple LLM providers: gemini (free), groq (free), grok (paid)

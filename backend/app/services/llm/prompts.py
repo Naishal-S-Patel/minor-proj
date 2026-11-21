@@ -19,12 +19,18 @@ available side-by-side rather than being overwritten with no history.
 # ExtractionResult (a Pydantic model), not by trusting the LLM's compliance.
 EXTRACTION_PROMPT_V1 = """You are an AI meeting assistant with multilingual and calendar intelligence. You will be given a cleaned meeting transcript. Extract structured information from it and respond with ONLY a single JSON object -- no markdown code fences, no preamble, no explanation, just the raw JSON.
 
-The transcript may contain Person IDs or speaker labels such as [P01]: text, [USR-101]: text, [MEE001]: text, [Speaker 1]: text, or Person Name: text, or participant rosters (e.g. "P01 -> Sarah Chen" or "USR-101 (Sarah Chen)"), and timestamps like [00:15].
-Always map every Person ID / Speaker ID to the person's actual Speaker Name using any participant list/header OR conversational cues (e.g. "Hi, I'm Sarah" or "Alex, can you handle..."). If no real name exists, map the ID to a clean label like the ID itself.
+The transcript may contain Person IDs or speaker labels such as [P01]: text, [USR-101]: text, [MEE001]: text, [Speaker 1]: text, [USR-101 (Ramesha)]: text, or Person Name: text, or participant rosters (e.g. "P01 -> Sarah Chen" or "USR-101 (Sarah Chen)"), and timestamps like [00:15].
+Speaker IDs in audio transcripts come from voice diarization: every line with the same ID was spoken by the same voice. Zoom IDs look like USR-101, USR-102; Google Meet IDs look like P01, P02.
+Always map every Person ID / Speaker ID to the person's actual Speaker Name using, in this order of priority: (1) a name already attached to the ID, e.g. "USR-101 (Ramesha)"; (2) a participant list/header; (3) self-introductions by that ID ("Hi, I'm Sarah", "मेरा नाम रमेशा है", "main Naishal hoon"); (4) being greeted or handed over to by the previous speaker ("Hi Naishal, ..." -> the NEXT different speaker is Naishal; "Thanks Ramesha" -> the PREVIOUS different speaker is Ramesha). Never give two different IDs the same name. If no real name exists, map the ID to itself.
 Use the mapped Speaker Name consistently in action_items, calendar_events, speakers, and dialogue_turns, while preserving the original ID in speaker_map and dialogue_turns[].speaker_id.
 
-Multi-language instructions:
-If the meeting is in Hindi, Spanish, French, Gujarati, German, or any other language, keep summaries, action items, and keywords accurate, preserving speaker names and providing helpful English explanations or native terms where relevant.
+Multi-language instructions (English, Hindi, Hinglish):
+- The meeting may be in English, Hindi (Devanagari script), or Hinglish (Hindi written in Latin script, mixed with English, e.g. "Main kal tak report share kar dunga").
+- Write summary, action_items[].task, decisions and keywords in clear English (translate Hindi/Hinglish faithfully), keeping names, product terms and numbers exactly as spoken.
+- Keep dialogue_turns[].text and calendar_events[].context in the original language as quoted from the transcript.
+- Understand Hindi time expressions: "kal"/"कल" (tomorrow when about a future plan), "parso"/"परसों" (in 2 days), "3 din baad"/"3 दिन बाद" (after 3 days), "agle hafte"/"अगले हफ्ते" (next week), "Friday tak" (by Friday).
+- Understand Hindi commitments as action items: "kar dunga/kar dungi/karenge/करूँगा/भेज दूंगा" = the speaker will do it; decisions: "tay kiya/decide kiya/फैसला/तय हुआ".
+- detected_language: "hi" for Hindi or Hinglish, "en" for English.
 
 The JSON object must have exactly these fields:
 
