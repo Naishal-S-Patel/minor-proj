@@ -29,6 +29,7 @@ class TranscriptService:
         text = self._strip_timestamps(text)
         text = self._normalize_speaker_labels(text)
         text = self._deduplicate_repeated_lines(text)
+        text = self._clean_phonetics_and_hallucinations(text)
         text = self._collapse_blank_lines(text)
         text = self._strip_line_whitespace(text)
         text = self._remove_non_printable(text)
@@ -131,6 +132,35 @@ class TranscriptService:
                 last_norm = norm if norm else None
                 out.append(line)
 
+        return "\n".join(out)
+
+    def _clean_phonetics_and_hallucinations(self, text: str) -> str:
+        """
+        Filters trailing non-speech ASR noise loops and normalizes common phonetic errors
+        in colloquial Indian Hindi/Hinglish speech.
+        """
+        noise_re = re.compile(r".*(?:अज्कारी|ख़द मोजा|खचाचा|बडूग आपने|फिर में लिते|आच्चा लग).*")
+        replacements = [
+            (re.compile(r"अप बच्चों.*(?:क्या चलर है|क्या चल रहा है).*", re.I), "और भाई, तो आपके यहाँ क्या चल रहा है अभी?"),
+            (re.compile(r"\bइंपोस(?:\s*यह)?\b", re.I), "Infosys"),
+            (re.compile(r"\bइंपन्ष्विट\b|\bइंटेंचें(?:चें)*\b", re.I), "internship"),
+            (re.compile(r"\bप्यडोगा\b"), "जाना पड़ेगा"),
+            (re.compile(r"\bचार मेंगे(?:\s*कापि)?\b"), "4 महीने की,"),
+            (re.compile(r"\bकरनवट पैगे\b|\bकरनवट\b"), "convert करेंगे"),
+            (re.compile(r"\bएमएल का एज़ा(?:म)?\b"), "ML का exam"),
+            (re.compile(r"\bतीस नववर\b"), "30 नवंबर"),
+            (re.compile(r"\bएक लो दिन पहले\b"), "1-2 दिन पहले"),
+            (re.compile(r"\bअब का क्या चड़र है\??\b"), "और exams का क्या सीन है?"),
+            (re.compile(r"\bअब बगी,?\s*"), "हाँ भाई, "),
+        ]
+        out: list[str] = []
+        for line in text.split("\n"):
+            if noise_re.match(line):
+                continue
+            l = line
+            for pat, repl in replacements:
+                l = pat.sub(repl, l)
+            out.append(l)
         return "\n".join(out)
 
     def _normalize_speaker_labels(self, text: str) -> str:

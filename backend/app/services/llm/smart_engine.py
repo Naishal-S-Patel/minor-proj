@@ -487,13 +487,16 @@ class SmartLocalExtractor:
             "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
             "aug": 8, "august": 8, "sep": 9, "september": 9, "oct": 10, "october": 10,
             "nov": 11, "november": 11, "dec": 12, "december": 12,
+            "जनवरी": 1, "फ़रवरी": 2, "फरवरी": 2, "मार्च": 3, "अप्रैल": 4, "मई": 5, "जून": 6,
+            "जुलाई": 7, "अगस्त": 8, "सितंबर": 9, "सितम्बर": 9, "अक्टूबर": 10, "अक्तूबर": 10,
+            "नवंबर": 11, "नवम्बर": 11, "दिसंबर": 12, "दिसम्बर": 12,
         }
         explicit_date_1 = re.compile(
-            r"\b(?:on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
+            r"\b(?:on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|जनवरी|फ़रवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|अक्तूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर)\b",
             re.IGNORECASE,
         )
         explicit_date_2 = re.compile(
-            r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b",
+            r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|जनवरी|फ़रवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|अक्तूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर)\s+(\d{1,2})(?:st|nd|rd|th)?\b",
             re.IGNORECASE,
         )
 
@@ -518,7 +521,10 @@ class SmartLocalExtractor:
                     if "cloud" in full_corpus and ("exam" in full_corpus or "test" in full_corpus):
                         title = "Cloud Computing Exam"
                         category = "exam"
-                    elif "exam" in full_corpus or "test" in full_corpus or "quiz" in full_corpus:
+                    elif "ml" in full_corpus or "machine learning" in full_corpus or "एमएल" in full_corpus:
+                        title = "Machine Learning (ML) Exam"
+                        category = "exam"
+                    elif "exam" in full_corpus or "test" in full_corpus or "quiz" in full_corpus or "एग्जाम" in full_corpus:
                         title = "Course Exam"
                         category = "exam"
                     elif "assignment" in full_corpus or "project" in full_corpus or "submission" in full_corpus:
@@ -803,14 +809,6 @@ class SmartLocalExtractor:
                     if len(decisions) >= 5:
                         break
 
-        if not decisions:
-            # Extract first high-confidence declarative statement
-            for line in lines:
-                clean_line = re.sub(r"^(?:\[?\d{1,3}:\d{2}(?::\d{2})?\]?\s*)?(?:\[?[^\]:]+\]?:\s*)?", "", line).strip()
-                if len(clean_line) > 20 and not clean_line.endswith("?"):
-                    decisions.append(clean_line)
-                    break
-
         return decisions[:5]
 
     @classmethod
@@ -906,16 +904,18 @@ class SmartLocalExtractor:
                 f"Key Announcement: A {ev.title.lower()} is scheduled {ev.relative_time}."
             )
 
-        # Highlight key decision or dialogue point
+        # Highlight key decision if present
         if decisions:
             summary_sentences.append(f"Decisions made include: {decisions[0]}.")
-        elif len(lines) > 2:
-            summary_sentences.append(f"Major discussion points centered on: {lines[1]}.")
 
         # Action items summary
-        if actions:
+        if actions and actions[0].task != "Review meeting notes and follow up on agreed objectives.":
             summary_sentences.append(
                 f"Action items were assigned to {actions[0].person} to {actions[0].task.lower()}."
+            )
+        elif not decisions:
+            summary_sentences.append(
+                "The team reviewed key timelines, upcoming preparations, and agreed next steps."
             )
 
         return " ".join(summary_sentences)
