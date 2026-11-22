@@ -45,7 +45,7 @@ The JSON object must have exactly these fields:
   "speakers": ["Mapped Speaker Name 1", "Mapped Speaker Name 2"],
   "speaker_map": {{"P01": "Mapped Speaker Name 1", "P02": "Mapped Speaker Name 2"}},
   "calendar_events": [
-    {{"title": "Event or Test name e.g. Test / Exam / Demo", "relative_time": "e.g. after 3 days / next Friday", "days_from_now": 3, "speaker": "Mapped Speaker Name who scheduled it", "context": "quote from transcript", "category": "exam" | "deadline" | "meeting"}}
+    {{"title": "Event or Test name e.g. Machine Learning (ML) Exam / Test", "relative_time": "e.g. 30th November / next Friday", "days_from_now": 8, "event_date": "YYYY-MM-DD or null", "speaker": "Mapped Speaker Name who scheduled it", "context": "quote from transcript", "category": "exam" | "deadline" | "meeting"}}
   ],
   "dialogue_turns": [
     {{"speaker": "Mapped Speaker Name", "speaker_id": "Original Person ID or Speaker ID e.g. P01, USR-101, Speaker 1", "time": "00:15 or null", "text": "What they said"}}

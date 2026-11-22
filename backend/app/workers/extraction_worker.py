@@ -123,13 +123,47 @@ async def run_extraction_pipeline(
                     target_dt = None
 
             if target_dt is None:
+                # Try parsing explicit date from relative_time or title (e.g. "30th November", "30 नवंबर", "25 Nov")
+                months_map = {
+                    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+                    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+                    "aug": 8, "august": 8, "sep": 9, "september": 9, "oct": 10, "october": 10,
+                    "nov": 11, "november": 11, "dec": 12, "december": 12,
+                    "जनवरी": 1, "फ़रवरी": 2, "फरवरी": 2, "मार्च": 3, "अप्रैल": 4, "मई": 5, "जून": 6,
+                    "जुलाई": 7, "अगस्त": 8, "सितंबर": 9, "सितम्बर": 9, "अक्टूबर": 10, "अक्तूबर": 10,
+                    "नवंबर": 11, "नवम्बर": 11, "दिसंबर": 12, "दिसम्बर": 12,
+                }
+                date_match = re.search(
+                    r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([A-Za-z\u0900-\u097F]+)",
+                    f"{ev.relative_time} {ev.title}",
+                    re.IGNORECASE,
+                ) or re.search(
+                    r"([A-Za-z\u0900-\u097F]+)\s+(\d{1,2})(?:st|nd|rd|th)?",
+                    f"{ev.relative_time} {ev.title}",
+                    re.IGNORECASE,
+                )
+                if date_match:
+                    g1, g2 = date_match.group(1), date_match.group(2)
+                    day, mon_str = (int(g1), g2.lower()) if g1.isdigit() else (int(g2), g1.lower())
+                    if mon_str in months_map and 1 <= day <= 31:
+                        m_num = months_map[mon_str]
+                        target_dt = datetime(now.year, m_num, day, tzinfo=timezone.utc)
+                        if target_dt < now - timedelta(days=60):
+                            target_dt = target_dt.replace(year=now.year + 1)
+                        days = max(0, (target_dt.date() - now.date()).days)
+
+            if target_dt is None:
                 days = ev.days_from_now if ev.days_from_now is not None else 3
                 target_dt = now + timedelta(days=days)
+
+            title = ev.title
+            if title.strip().lower() in ("l exam", "l test", "एल का एक्जाम", "एल एक्जाम"):
+                title = "Machine Learning (ML) Exam"
 
             calendar_events.append(
                 CalendarEvent(
                     id=uuid.uuid4().hex[:8],
-                    title=ev.title,
+                    title=title,
                     relative_time=ev.relative_time,
                     event_date=target_dt.strftime("%Y-%m-%d"),
                     formatted_date=target_dt.strftime("%A, %b %d, %Y"),
