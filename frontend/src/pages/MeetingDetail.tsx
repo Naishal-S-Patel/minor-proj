@@ -553,13 +553,13 @@ export function MeetingDetail() {
                 padding: "1.25rem",
               }}
             >
-              {meeting.cleaned_transcript.includes("[Speaker ") || meeting.cleaned_transcript.includes("[")
+              {meeting.cleaned_transcript.includes("[Speaker ") || meeting.cleaned_transcript.includes("[") || meeting.cleaned_transcript.includes(":")
                 ? meeting.cleaned_transcript.split("\n").map((line, i) => {
-                    const speakerMatch = line.match(/^(?:\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*)?(?:\[?([A-Za-z0-9_\s\.\-]+?)\]?):\s*(.*)/);
+                    const speakerMatch = line.match(/^(?:\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*)?(?:\[([^\]]+)\]|([^:]+)):\s*(.*)/);
                     if (speakerMatch) {
-                      const time = speakerMatch[1];
-                      const speaker = speakerMatch[2];
-                      const text = speakerMatch[3];
+                      const time = speakerMatch[1] || "";
+                      const speaker = (speakerMatch[2] || speakerMatch[3] || "").trim();
+                      const text = speakerMatch[4];
                       return (
                         <div key={i} style={{ display: "flex", gap: "0.75rem", marginBottom: "0.6rem", alignItems: "flex-start" }}>
                           <span

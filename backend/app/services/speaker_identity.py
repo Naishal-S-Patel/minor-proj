@@ -205,7 +205,7 @@ _SELF_INTRO_PATTERNS = [
     re.compile(rf"\b(?:[Mm]ain|[Mm]ai|[Mm]ein)\s+({_LATIN_NAME})\s+(?:hoon|hun|hu|bol raha|bol rahi)\b"),
     # Hindi (Devanagari)
     re.compile(rf"मेरा नाम\s+({_DEVA_NAME}|{_LATIN_NAME})\s+है"),
-    re.compile(rf"मैं\s+({_DEVA_NAME}|{_LATIN_NAME})\s+(?:हूँ|हूं|बोल रहा|बोल रही)"),
+    re.compile(rf"मैं\s+(?!भी|ही|तो)({_DEVA_NAME}|{_LATIN_NAME})\s+(?:हूँ|हूं|बोल रहा|बोल रही)"),
 ]
 
 # Only the keywords are case-insensitive; names must stay Capitalised so that
@@ -229,10 +229,12 @@ _NOT_NAMES = {
     "now", "on", "in", "at", "from", "with", "excited", "working", "looking", "trying",
     "you", "your", "and", "but", "yes", "no", "yeah", "hello", "hi", "hey", "thanks", "thank",
     "sab", "sabhi", "doston", "dosto", "bhai", "aap", "tum", "hum", "main", "theek", "accha",
+    "badhiya", "thik", "mast", "zabardast",
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "today",
     "tomorrow", "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december", "google", "zoom", "meet",
     "सभी", "सब", "दोस्तों", "आप", "जी", "टीम", "सर", "मैडम", "भाई",
+    "बढ़िया", "ठीक", "अच्छा", "खुश", "व्यस्त", "तैयार", "शांत", "परेशान", "भी", "ही", "तो",
 }
 
 
