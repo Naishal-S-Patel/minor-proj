@@ -68,22 +68,48 @@ export function ChatPanel({ meetingId }: ChatPanelProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-      {/* Suggestions Bar */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
+      {/* Suggestions Bar Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+        <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          💡 Click a suggested question:
+        </span>
+        <span
+          style={{
+            fontSize: "0.7rem",
+            fontWeight: 600,
+            background: "rgba(108, 99, 255, 0.15)",
+            color: "var(--color-accent)",
+            padding: "0.15rem 0.55rem",
+            borderRadius: "999px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.3rem",
+          }}
+        >
+          <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }} />
+          AWS Bedrock Connected
+        </span>
+      </div>
+
+      {/* Suggested Questions Pills */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
         {SUGGESTIONS.map((s) => (
           <button
             key={s}
-            className="chip"
+            className="chip hover-lift"
             style={{
-              background: "rgba(255, 255, 255, 0.05)",
+              background: "rgba(255, 255, 255, 0.04)",
               color: "var(--color-text)",
-              border: "1px solid var(--color-border)",
+              border: "1px solid rgba(108, 99, 255, 0.3)",
               cursor: "pointer",
               fontSize: "0.75rem",
-              padding: "0.3rem 0.65rem",
+              fontWeight: 500,
+              padding: "0.35rem 0.75rem",
               borderRadius: "999px",
+              transition: "all 0.2s ease",
             }}
-            onClick={() => sendMessage(s)}
+            onClick={() => sendMessage(s.replace(/^[^\w\s]+\s*/, ""))}
+            disabled={isLoading}
           >
             {s}
           </button>

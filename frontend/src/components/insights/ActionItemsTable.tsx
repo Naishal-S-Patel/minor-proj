@@ -88,14 +88,51 @@ export function ActionItemsTable({ meetingId, actionItems }: ActionItemsTablePro
     return item.id in pendingOverrides ? pendingOverrides[item.id] : item.done;
   }
 
+  const completedCount = actionItems.filter((item) => getDisplayedDone(item)).length;
+  const progressPercent = actionItems.length > 0 ? Math.round((completedCount / actionItems.length) * 100) : 0;
+
   return (
     <div className="table-wrapper">
+      {/* Progress Bar Header */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0.6rem 0.85rem",
+          marginBottom: "0.75rem",
+          background: "rgba(255, 255, 255, 0.03)",
+          borderRadius: "8px",
+          border: "1px solid rgba(255, 255, 255, 0.06)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--color-text)" }}>
+            Task Completion:
+          </span>
+          <span style={{ fontSize: "0.8125rem", color: progressPercent === 100 ? "#10b981" : "var(--color-accent)", fontWeight: 700 }}>
+            {completedCount} of {actionItems.length} completed ({progressPercent}%)
+          </span>
+        </div>
+        <div style={{ width: "140px", height: "7px", background: "rgba(255, 255, 255, 0.1)", borderRadius: "999px", overflow: "hidden" }}>
+          <div
+            style={{
+              width: `${progressPercent}%`,
+              height: "100%",
+              background: progressPercent === 100 ? "#10b981" : "linear-gradient(90deg, #6c63ff, #10b981)",
+              transition: "width 0.3s ease",
+            }}
+          />
+        </div>
+      </div>
+
       <table>
         <thead>
           <tr>
             <th style={{ width: "40px" }}></th>
             <th>Person</th>
             <th>Task</th>
+            <th>Status</th>
             <th>Deadline</th>
           </tr>
         </thead>
@@ -122,7 +159,7 @@ export function ActionItemsTable({ meetingId, actionItems }: ActionItemsTablePro
                     }}
                   />
                 </td>
-                <td style={{ fontWeight: 500 }}>{item.person}</td>
+                <td style={{ fontWeight: 600 }}>{item.person}</td>
                 <td
                   style={{
                     textDecoration: isDone ? "line-through" : "none",
@@ -143,6 +180,23 @@ export function ActionItemsTable({ meetingId, actionItems }: ActionItemsTablePro
                       Couldn't save — try again
                     </span>
                   )}
+                </td>
+                <td>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      fontSize: "0.7rem",
+                      fontWeight: 600,
+                      padding: "0.2rem 0.55rem",
+                      borderRadius: "999px",
+                      background: isDone ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                      color: isDone ? "#10b981" : "#f59e0b",
+                    }}
+                  >
+                    {isDone ? "✓ Done" : "⏳ Pending"}
+                  </span>
                 </td>
                 <td>
                   {item.deadline ? (
