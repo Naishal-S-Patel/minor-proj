@@ -77,14 +77,22 @@ class Settings(BaseSettings):
     speaker_model_dir: str = "pretrained_models/spkrec-ecapa-voxceleb"
 
     # --- LLM Extraction (Phase 3) ---
-    # Supports multiple LLM providers: gemini (free), groq (free), grok (paid)
-    llm_provider: str = "gemini"  # "gemini" or "groq" (both free) or "grok" (paid)
+    # Supports multiple LLM providers: bedrock, gemini, groq, grok
+    llm_provider: str = "gemini"  # "bedrock", "gemini", "groq", or "grok"
     gemini_api_key: str = ""      # Get free key at https://aistudio.google.com/apikey
     gemini_model: str = "gemini-4-hydrogen"
     groq_api_key: str = ""        # Get FREE key at https://console.groq.com/
     groq_model: str = "llama-3.3-70b-versatile"  # Free, fast, excellent quality
     grok_api_key: str = ""        # Get key at https://console.x.ai/ ($5 minimum)
     grok_model: str = "grok-4.7"  # Latest xAI Grok model (paid)
+
+    # --- AWS Bedrock ---
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_session_token: str = ""
+    aws_region: str = "us-east-1"
+    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
     llm_max_output_tokens: int = 2048
     llm_request_timeout_seconds: int = 30
     llm_max_retries: int = 2

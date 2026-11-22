@@ -59,11 +59,18 @@ class ExtractionService:
 
     def _init_client(self):
         """Attempts to initialize the configured LLM client."""
+        import os
         try:
-            if settings.llm_provider == "gemini" and settings.gemini_api_key:
+            if settings.llm_provider == "bedrock" and (settings.aws_access_key_id or os.getenv("AWS_ACCESS_KEY_ID")):
+                from app.services.llm.bedrock_client import BedrockClient
+                return BedrockClient()
+            elif settings.llm_provider == "gemini" and settings.gemini_api_key:
                 return GeminiClient()
             elif settings.llm_provider == "groq" and settings.groq_api_key:
                 return GroqClient()
+            elif settings.aws_access_key_id or os.getenv("AWS_ACCESS_KEY_ID"):
+                from app.services.llm.bedrock_client import BedrockClient
+                return BedrockClient()
             elif settings.gemini_api_key:
                 return GeminiClient()
             elif settings.groq_api_key:

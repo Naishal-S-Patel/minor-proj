@@ -13,6 +13,8 @@ numpy>=1.26.0
 # Optional, for much better speaker separation (neural voice embeddings):
 #   pip install speechbrain
 # Picked up automatically when installed (DIARIZATION_BACKEND=auto).
+# LLM Providers (AWS Bedrock, Google Gemini, Groq)
+boto3>=1.35.0                  # AWS Bedrock SDK (Claude 3.5 Sonnet/Haiku, Nova)
 google-genai==1.14.0       # Google Gemini API (free tier: 15 RPM, 1M tokens/day)
 httpx>=0.28.1              # HTTP client for async requests
 tenacity==9.0.0            # retry/backoff for LLM calls (rate limits, transient errors)
