@@ -86,12 +86,13 @@ class Settings(BaseSettings):
     grok_api_key: str = ""        # Get key at https://console.x.ai/ ($5 minimum)
     grok_model: str = "grok-4.7"  # Latest xAI Grok model (paid)
 
-    # --- AWS Bedrock ---
+    # --- AWS Bedrock & Transcribe ---
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_session_token: str = ""
-    aws_region: str = "us-east-1"
-    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    aws_region: str = "ap-south-1"
+    aws_s3_bucket: str = ""
+    bedrock_model_id: str = "apac.amazon.nova-lite-v1:0"
 
     llm_max_output_tokens: int = 2048
     llm_request_timeout_seconds: int = 30

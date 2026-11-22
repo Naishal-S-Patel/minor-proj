@@ -273,6 +273,33 @@ class AudioService:
             len(audio_bytes), filename, language, platform, len(roster),
         )
 
+        # Primary Priority: AWS Transcribe Cloud ASR (falls back to local Whisper if offline/fails)
+        if settings.whisper_provider == "aws" or (settings.aws_s3_bucket and settings.aws_access_key_id):
+            try:
+                from app.services.aws_transcribe_service import AWSTranscribeService
+                logger.info("Attempting primary transcription via AWS Transcribe (bucket=%s)...", settings.aws_s3_bucket)
+                transcribe_svc = AWSTranscribeService()
+                aws_text, aws_lang = transcribe_svc.transcribe(
+                    audio_bytes=audio_bytes,
+                    filename=filename,
+                    language=language,
+                    platform=platform,
+                    participants=roster,
+                )
+                if aws_text and len(aws_text.strip()) > 10:
+                    logger.info("AWS Transcribe succeeded (%d chars, lang=%s)", len(aws_text), aws_lang)
+                    if on_segment:
+                        for line in aws_text.split("\n"):
+                            if line.strip():
+                                on_segment(line, aws_text.split("\n"))
+                    return aws_text, aws_lang
+                logger.warning("AWS Transcribe returned empty text. Falling back to local Whisper.")
+            except Exception as aws_exc:
+                logger.warning(
+                    "AWS Transcribe unavailable or failed (%s). Seamlessly falling back to local Whisper.",
+                    aws_exc,
+                )
+
         model = self._get_model(model_name)
         ext = filename.rsplit(".", 1)[-1].lower()
         samples = self._preprocess(
